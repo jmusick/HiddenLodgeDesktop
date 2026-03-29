@@ -1,0 +1,22 @@
+# Local secrets / config
+config.json
+.env
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+*.log
+
+# PyInstaller build artifacts
+build/
+dist/
+*.spec
+
+# VS Code
+.vscode/

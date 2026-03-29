@@ -1,0 +1,341 @@
+#!/usr/bin/env python3
+"""HiddenLodge Desktop Bridge — entry point."""
+
+from __future__ import annotations
+
+import pathlib
+import queue
+import subprocess
+import threading
+import tkinter as tk
+from tkinter import filedialog, scrolledtext, ttk
+
+from bridge.config import Config
+from bridge import preparedness as prep_bridge
+
+APP_NAME = "HiddenLodge Desktop Bridge"
+ADDON_SAVEDVARS_NAME = "HiddenLodge.lua"
+AUTO_SYNC_SECONDS = 30 * 60
+
+BG_APP = "#081321"
+BG_PANEL = "#0d1f34"
+BG_PANEL_SOFT = "#112640"
+BG_INPUT = "#06111d"
+ACCENT_GOLD = "#d4b26a"
+ACCENT_CYAN = "#8ec7dd"
+TEXT_PRIMARY = "#eaf4ff"
+TEXT_MUTED = "#8ca8c0"
+SUCCESS = "#66d69f"
+ERROR = "#f18f86"
+
+
+class App(tk.Tk):
+    def __init__(self) -> None:
+        super().__init__()
+        self.title(APP_NAME)
+        self.resizable(False, False)
+        self.configure(bg=BG_APP)
+        self._log_queue: queue.Queue[str] = queue.Queue()
+        self._config: Config | None = None
+        self._sync_in_progress = False
+        self._auto_sync_job: str | None = None
+
+        self._apply_theme()
+        self._build_ui()
+        self._load_config()
+        self._start_auto_sync()
+        self._poll_log()
+
+    def _apply_theme(self) -> None:
+        style = ttk.Style(self)
+        style.theme_use("clam")
+
+        style.configure("HL.TFrame", background=BG_APP)
+        style.configure("HL.Card.TFrame", background=BG_PANEL)
+        style.configure("HL.Banner.TFrame", background=BG_PANEL_SOFT)
+
+        style.configure("HL.TLabel", background=BG_APP, foreground=TEXT_PRIMARY, font=("Segoe UI", 10))
+        style.configure("HL.Title.TLabel", background=BG_PANEL_SOFT, foreground=ACCENT_GOLD, font=("Segoe UI Semibold", 16))
+        style.configure("HL.Subtitle.TLabel", background=BG_PANEL_SOFT, foreground=ACCENT_CYAN, font=("Segoe UI", 9))
+        style.configure("HL.Muted.TLabel", background=BG_PANEL, foreground=TEXT_MUTED, font=("Segoe UI", 9))
+        style.configure("HL.StatusValue.TLabel", background=BG_APP, foreground=ACCENT_CYAN, font=("Segoe UI Semibold", 10))
+
+        style.configure("HL.TLabelframe", background=BG_PANEL, bordercolor="#244060", relief="solid")
+        style.configure("HL.TLabelframe.Label", background=BG_PANEL, foreground=ACCENT_GOLD, font=("Segoe UI Semibold", 10))
+
+        style.configure("HL.TEntry", fieldbackground=BG_INPUT, foreground=TEXT_PRIMARY, bordercolor="#2a4765")
+        style.map("HL.TEntry", bordercolor=[("focus", ACCENT_GOLD)])
+
+        style.configure(
+            "HL.Primary.TButton",
+            background="#6f1b12",
+            foreground="#ffe9ba",
+            bordercolor="#c27f3a",
+            focuscolor="",
+            font=("Segoe UI Semibold", 9),
+            padding=(10, 4),
+        )
+        style.map(
+            "HL.Primary.TButton",
+            background=[("active", "#882217"), ("pressed", "#571108"), ("disabled", "#2e2e2e")],
+            foreground=[("disabled", "#a2a2a2")],
+        )
+
+        style.configure(
+            "HL.Secondary.TButton",
+            background="#1d3a57",
+            foreground=TEXT_PRIMARY,
+            bordercolor="#365c7e",
+            focuscolor="",
+            font=("Segoe UI", 9),
+            padding=(10, 4),
+        )
+        style.map(
+            "HL.Secondary.TButton",
+            background=[("active", "#26507a"), ("pressed", "#152a40"), ("disabled", "#2e2e2e")],
+            foreground=[("disabled", "#a2a2a2")],
+        )
+
+    # ------------------------------------------------------------------
+    # UI
+    # ------------------------------------------------------------------
+
+    def _build_ui(self) -> None:
+        pad = {"padx": 10, "pady": 5}
+
+        banner = ttk.Frame(self, style="HL.Banner.TFrame")
+        banner.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 6))
+        ttk.Label(banner, text="The Hidden Lodge", style="HL.Title.TLabel").grid(row=0, column=0, sticky="w", padx=12, pady=(10, 0))
+        ttk.Label(
+            banner,
+            text="Desktop Bridge for Guild Data Sync",
+            style="HL.Subtitle.TLabel",
+        ).grid(row=1, column=0, sticky="w", padx=12, pady=(0, 10))
+
+        status_frame = ttk.Frame(self, style="HL.TFrame")
+        status_frame.grid(row=1, column=0, sticky="ew", **pad)
+
+        self._status_var = tk.StringVar(value="Auto-sync pending")
+        ttk.Label(status_frame, text="Status:", style="HL.TLabel").pack(side="left")
+        ttk.Label(status_frame, textvariable=self._status_var, style="HL.StatusValue.TLabel").pack(side="left", padx=6)
+
+        auto_row = ttk.Frame(self, style="HL.TFrame")
+        auto_row.grid(row=2, column=0, sticky="ew", **pad)
+        ttk.Label(
+            auto_row,
+            text="Auto-sync runs on launch and every 30 minutes while open.",
+            style="HL.Muted.TLabel",
+        ).pack(side="left")
+
+        sep = ttk.Separator(self, orient="horizontal")
+        sep.grid(row=3, column=0, sticky="ew", padx=10, pady=3)
+
+        sync_frame = ttk.LabelFrame(self, text="Sync to WoW", style="HL.TLabelframe")
+        sync_frame.grid(row=4, column=0, sticky="ew", padx=10, pady=4)
+        sync_frame.columnconfigure(0, weight=1)
+
+        path_row = ttk.Frame(sync_frame, style="HL.Card.TFrame")
+        path_row.grid(row=0, column=0, sticky="ew", padx=6, pady=6)
+        path_row.columnconfigure(0, weight=1)
+
+        self._savedvars_var = tk.StringVar(value="")
+        self._savedvars_entry = ttk.Entry(path_row, textvariable=self._savedvars_var, state="readonly", width=78, style="HL.TEntry")
+        self._savedvars_entry.grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        self._browse_btn = ttk.Button(
+            path_row,
+            text="Browse WoW WTF Folder",
+            command=self._browse_wtf_folder,
+            style="HL.Secondary.TButton",
+        )
+        self._browse_btn.grid(row=0, column=1)
+
+        action_row = ttk.Frame(sync_frame, style="HL.Card.TFrame")
+        action_row.grid(row=1, column=0, sticky="w", padx=6, pady=(0, 6))
+
+        self._prep_btn = ttk.Button(
+            action_row,
+            text="Sync Now",
+            command=self._sync_preparedness,
+            style="HL.Primary.TButton",
+        )
+        self._prep_btn.grid(row=0, column=0, sticky="w")
+        ttk.Label(
+            action_row,
+            text="Fetches current website data and writes it\nto SavedVariables. Do /reload in WoW to apply.",
+            style="HL.Muted.TLabel",
+            justify="left",
+        ).grid(row=0, column=1, sticky="w", padx=(10, 0))
+
+        self._log = scrolledtext.ScrolledText(self, width=70, height=20, state="disabled")
+        self._log.grid(row=5, column=0, sticky="nsew", **pad)
+        self._log.configure(
+            bg=BG_INPUT,
+            fg=TEXT_PRIMARY,
+            insertbackground=ACCENT_GOLD,
+            selectbackground="#2b5079",
+            relief="flat",
+            highlightthickness=1,
+            highlightbackground="#27425f",
+            font=("Consolas", 10),
+        )
+
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(5, weight=1)
+
+    # ------------------------------------------------------------------
+    # Config
+    # ------------------------------------------------------------------
+
+    def _load_config(self) -> None:
+        try:
+            self._config = Config.load()
+            self._savedvars_var.set(str(self._config.wow_savedvars_path))
+            self._log_msg(f"Config loaded. Website: {self._config.website_url}")
+            self._status_var.set("Auto-sync ready")
+        except FileNotFoundError as exc:
+            self._log_msg(f"ERROR: {exc}")
+            self._status_var.set("Config missing")
+
+    def _start_auto_sync(self) -> None:
+        if not self._config:
+            return
+        self._trigger_sync("Startup sync…")
+
+    def _schedule_next_sync(self) -> None:
+        if self._auto_sync_job is not None:
+            self.after_cancel(self._auto_sync_job)
+        self._auto_sync_job = self.after(AUTO_SYNC_SECONDS * 1000, self._scheduled_sync)
+
+    def _scheduled_sync(self) -> None:
+        self._auto_sync_job = None
+        self._trigger_sync("Scheduled sync…")
+
+    def _is_wow_running(self) -> bool:
+        process_names = ("wow.exe", "wowclassic.exe", "wowclassicera.exe")
+        try:
+            result = subprocess.run(
+                ["tasklist", "/FO", "CSV", "/NH"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            output = (result.stdout or "").lower()
+            return any(f'"{name}"' in output for name in process_names)
+        except Exception:
+            return False
+
+    def _browse_wtf_folder(self) -> None:
+        selected = filedialog.askdirectory(title="Select WoW WTF folder")
+        if not selected:
+            return
+
+        wtf_dir = pathlib.Path(selected)
+        savedvars_path = self._discover_savedvars_path(wtf_dir)
+        if not savedvars_path:
+            self._log_msg(
+                "Could not find HiddenLodge SavedVariables under that folder. "
+                "Pick the WTF folder containing Account/.../SavedVariables."
+            )
+            return
+
+        if not self._config:
+            self._log_msg("Cannot persist path: config not loaded.")
+            return
+
+        self._config.wow_savedvars_path = savedvars_path
+        self._savedvars_var.set(str(savedvars_path))
+        self._config.save()
+        self._log_msg(f"SavedVariables path updated: {savedvars_path}")
+
+    def _discover_savedvars_path(self, wtf_dir: pathlib.Path) -> pathlib.Path | None:
+        account_dir = wtf_dir / "Account"
+        if not account_dir.exists() or not account_dir.is_dir():
+            return None
+
+        matches = sorted(account_dir.glob(f"*/SavedVariables/{ADDON_SAVEDVARS_NAME}"))
+        if not matches:
+            return None
+        if len(matches) == 1:
+            return matches[0]
+
+        latest = max(matches, key=lambda p: p.stat().st_mtime)
+        self._log_msg(f"Multiple accounts found; selected most recently updated: {latest.parent.parent.name}")
+        return latest
+
+    # ------------------------------------------------------------------
+    # Sync actions
+    # ------------------------------------------------------------------
+
+    def _sync_preparedness(self) -> None:
+        self._trigger_sync("Manual sync…")
+
+    def _trigger_sync(self, reason: str) -> None:
+        if not self._config:
+            self._log_msg("Cannot sync: config not loaded.")
+            return
+
+        if self._is_wow_running():
+            self._status_var.set("Waiting for WoW to close")
+            self._log_msg(
+                "WoW is running. Sync is deferred until WoW is closed "
+                "because WoW overwrites SavedVariables on reload/logout."
+            )
+            self._schedule_next_sync()
+            return
+
+        if self._sync_in_progress:
+            self._log_msg("Sync already in progress; skipping duplicate request.")
+            self._schedule_next_sync()
+            return
+        self._sync_in_progress = True
+        self._prep_btn.config(state="disabled")
+        self._status_var.set("Syncing")
+        self._log_msg(reason)
+        threading.Thread(target=self._run_prep_sync, daemon=True).start()
+
+    def _run_prep_sync(self) -> None:
+        try:
+            count = prep_bridge.sync(self._config)
+            self._log_msg(f"Data sync complete — {count} character entries written. Do /reload in WoW.")
+            self.after(0, lambda: self._status_var.set("Sync complete"))
+        except Exception as exc:  # noqa: BLE001
+            self._log_msg(f"Data sync error: {exc}")
+            self.after(0, lambda: self._status_var.set("Sync error"))
+        finally:
+            self._sync_in_progress = False
+            self.after(0, lambda: self._prep_btn.config(state="normal"))
+            self._schedule_next_sync()
+
+    # ------------------------------------------------------------------
+    # Logging
+    # ------------------------------------------------------------------
+
+    def _log_msg(self, msg: str) -> None:
+        self._log_queue.put(msg)
+
+    def _poll_log(self) -> None:
+        try:
+            while True:
+                msg = self._log_queue.get_nowait()
+                self._log.config(state="normal")
+                self._log.insert("end", msg + "\n")
+                self._log.see("end")
+                self._log.config(state="disabled")
+        except queue.Empty:
+            pass
+        self.after(100, self._poll_log)
+
+    # ------------------------------------------------------------------
+    # Cleanup
+    # ------------------------------------------------------------------
+
+    def destroy(self) -> None:
+        if self._auto_sync_job is not None:
+            self.after_cancel(self._auto_sync_job)
+            self._auto_sync_job = None
+        super().destroy()
+
+
+if __name__ == "__main__":
+    app = App()
+    app.mainloop()

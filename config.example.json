@@ -1,0 +1,6 @@
+{
+    "website_url": "https://hiddenlodge.example.com",
+    "api_key": "YOUR_DESKTOP_API_KEY_HERE",
+    "wow_savedvars_path": "C:\\Program Files (x86)\\World of Warcraft\\_retail_\\WTF\\Account\\YOUR_ACCOUNT\\SavedVariables\\HiddenLodge.lua",
+    "poll_interval_seconds": 30
+}
