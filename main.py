@@ -6,16 +6,19 @@ from __future__ import annotations
 import pathlib
 import queue
 import subprocess
+import sys
 import threading
 import tkinter as tk
 from tkinter import filedialog, scrolledtext, ttk
 
 from bridge.config import Config
 from bridge import preparedness as prep_bridge
+from bridge import updater as updater_bridge
 
 APP_NAME = "HiddenLodge Desktop Bridge"
 ADDON_SAVEDVARS_NAME = "HiddenLodge.lua"
 AUTO_SYNC_SECONDS = 30 * 60
+VERSION = "1.0.0"
 
 BG_APP = "#081321"
 BG_PANEL = "#0d1f34"
@@ -39,12 +42,14 @@ class App(tk.Tk):
         self._config: Config | None = None
         self._sync_in_progress = False
         self._auto_sync_job: str | None = None
+        self._update_available_release: dict | None = None
 
         self._apply_theme()
         self._build_ui()
         self._load_config()
         self._start_auto_sync()
         self._poll_log()
+        threading.Thread(target=self._check_for_update_bg, daemon=True).start()
 
     def _apply_theme(self) -> None:
         style = ttk.Style(self)
@@ -166,8 +171,18 @@ class App(tk.Tk):
             justify="left",
         ).grid(row=0, column=1, sticky="w", padx=(10, 0))
 
+        # Update notification bar — hidden until an update is found
+        self._update_frame = ttk.Frame(self, style="HL.TFrame")
+        self._update_btn = ttk.Button(
+            self._update_frame,
+            text="",
+            command=self._install_update,
+            style="HL.Primary.TButton",
+        )
+        self._update_btn.pack(fill="x", padx=0, pady=2)
+
         self._log = scrolledtext.ScrolledText(self, width=70, height=20, state="disabled")
-        self._log.grid(row=5, column=0, sticky="nsew", **pad)
+        self._log.grid(row=6, column=0, sticky="nsew", **pad)
         self._log.configure(
             bg=BG_INPUT,
             fg=TEXT_PRIMARY,
@@ -180,7 +195,7 @@ class App(tk.Tk):
         )
 
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(5, weight=1)
+        self.rowconfigure(6, weight=1)
 
     # ------------------------------------------------------------------
     # Config
@@ -324,6 +339,47 @@ class App(tk.Tk):
         except queue.Empty:
             pass
         self.after(100, self._poll_log)
+
+    # ------------------------------------------------------------------
+    # Auto-update
+    # ------------------------------------------------------------------
+
+    def _check_for_update_bg(self) -> None:
+        try:
+            release = updater_bridge.check_for_update(VERSION)
+            if release:
+                self.after(0, lambda: self._on_update_available(release))
+        except Exception:
+            pass  # silently ignore — update check is best-effort
+
+    def _on_update_available(self, release: dict) -> None:
+        tag = release.get("tag_name", "?")
+        self._update_available_release = release
+        self._update_btn.config(text=f"  Update Available — {tag}  \u2014  Click to download and install  ")
+        self._update_frame.grid(row=5, column=0, sticky="ew", padx=10, pady=(0, 2))
+        self._log_msg(f"Update available: {tag}. Click the update bar to install.")
+
+    def _install_update(self) -> None:
+        if not self._update_available_release:
+            return
+        if not getattr(sys, "frozen", False):
+            self._log_msg("Auto-update is only available in the packaged exe. Update via: git pull")
+            return
+
+        release = self._update_available_release
+        tag = release.get("tag_name", "?")
+        self._update_btn.config(state="disabled", text=f"  Downloading {tag}\u2026  ")
+
+        def _do_update() -> None:
+            try:
+                updater_bridge.download_and_apply_update(release)
+                self.after(0, lambda: self._log_msg("Download complete. Closing app — it will relaunch automatically."))
+                self.after(1500, self.destroy)
+            except Exception as exc:  # noqa: BLE001
+                self.after(0, lambda: self._log_msg(f"Update failed: {exc}"))
+                self.after(0, lambda: self._update_btn.config(state="normal", text=f"  Retry update — {tag}  "))
+
+        threading.Thread(target=_do_update, daemon=True).start()
 
     # ------------------------------------------------------------------
     # Cleanup

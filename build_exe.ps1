@@ -23,6 +23,7 @@ Write-Host "Building HiddenLodge Desktop Bridge..." -ForegroundColor Cyan
     --onefile `
     --windowed `
     --name "HiddenLodgeDesktop" `
+    --add-data "config.example.json;." `
     --distpath $OutputDir `
     --buildpath $BuildDir `
     --specpath $ScriptDir `
