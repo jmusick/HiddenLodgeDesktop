@@ -25,6 +25,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
 
+      - name: Write release version
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          Set-Content -Path version.txt -Value $version -NoNewline
+
       - name: Build executable
         run: |
           pyinstaller `
@@ -32,6 +38,7 @@ jobs:
             --windowed `
             --name HiddenLodgeDesktop `
             --add-data "config.example.json;." `
+            --add-data "version.txt;." `
             main.py
 
       - name: Create GitHub Release

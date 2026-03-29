@@ -15,6 +15,29 @@ import urllib.request
 GITHUB_REPO = "jmusick/HiddenLodgeDesktop"
 RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 ASSET_NAME = "HiddenLodgeDesktop.exe"
+VERSION_FILE_NAME = "version.txt"
+
+
+def _resource_dir() -> pathlib.Path:
+    if getattr(sys, "frozen", False):
+        return pathlib.Path(getattr(sys, "_MEIPASS", pathlib.Path(sys.executable).parent))
+    return pathlib.Path(__file__).resolve().parent.parent
+
+
+def get_current_version() -> str:
+    """Read the packaged app version, falling back to a safe dev placeholder."""
+    version_file = _resource_dir() / VERSION_FILE_NAME
+    try:
+        version = version_file.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        return "0.0.0-dev"
+    return version or "0.0.0-dev"
+
+
+def get_release_version(release: dict) -> str:
+    """Return a normalized version string for a GitHub release payload."""
+    version = str(release.get("tag_name", "")).lstrip("v").strip()
+    return f"v{version}" if version else "unknown"
 
 
 def _parse_version(tag: str) -> tuple[int, ...]:

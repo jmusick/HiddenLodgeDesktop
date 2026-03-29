@@ -19,7 +19,7 @@ from bridge import updater as updater_bridge
 APP_NAME = "HiddenLodge Desktop Bridge"
 ADDON_SAVEDVARS_NAME = "HiddenLodge.lua"
 AUTO_SYNC_SECONDS = 30 * 60
-VERSION = "1.0.0"
+VERSION = updater_bridge.get_current_version()
 
 BG_APP = "#081321"
 BG_PANEL = "#0d1f34"
@@ -165,6 +165,7 @@ class App(tk.Tk):
         self._sync_in_progress = False
         self._auto_sync_job: str | None = None
         self._update_available_release: dict | None = None
+        self._latest_release_version = "Checking..."
 
         self._apply_theme()
         self._build_ui()
@@ -241,10 +242,20 @@ class App(tk.Tk):
 
         status_frame = ttk.Frame(self, style="HL.TFrame")
         status_frame.grid(row=1, column=0, sticky="ew", **pad)
+        status_frame.columnconfigure(1, weight=1)
 
         self._status_var = tk.StringVar(value="Auto-sync pending")
+        self._current_version_var = tk.StringVar(value=f"v{VERSION}")
+        self._latest_version_var = tk.StringVar(value=self._latest_release_version)
         ttk.Label(status_frame, text="Status:", style="HL.TLabel").pack(side="left")
         ttk.Label(status_frame, textvariable=self._status_var, style="HL.StatusValue.TLabel").pack(side="left", padx=6)
+
+        version_frame = ttk.Frame(status_frame, style="HL.TFrame")
+        version_frame.pack(side="right")
+        ttk.Label(version_frame, text="Installed:", style="HL.TLabel").pack(side="left")
+        ttk.Label(version_frame, textvariable=self._current_version_var, style="HL.StatusValue.TLabel").pack(side="left", padx=(6, 12))
+        ttk.Label(version_frame, text="Latest:", style="HL.TLabel").pack(side="left")
+        ttk.Label(version_frame, textvariable=self._latest_version_var, style="HL.StatusValue.TLabel").pack(side="left", padx=(6, 0))
 
         auto_row = ttk.Frame(self, style="HL.TFrame")
         auto_row.grid(row=2, column=0, sticky="ew", **pad)
@@ -474,17 +485,20 @@ class App(tk.Tk):
     def _check_for_update_bg(self) -> None:
         try:
             release = updater_bridge.check_for_update(VERSION)
+            latest_version = updater_bridge.get_release_version(release) if release else f"v{VERSION}"
+            self.after(0, lambda: self._latest_version_var.set(latest_version))
             if release:
                 self.after(0, lambda: self._on_update_available(release))
         except Exception:
-            pass  # silently ignore — update check is best-effort
+            self.after(0, lambda: self._latest_version_var.set("Unavailable"))
 
     def _on_update_available(self, release: dict) -> None:
         tag = release.get("tag_name", "?")
         self._update_available_release = release
-        self._update_btn.config(text=f"  Update Available — {tag}  \u2014  Click to download and install  ")
+        self._latest_version_var.set(updater_bridge.get_release_version(release))
+        self._update_btn.config(text=f"  Update Available — installed v{VERSION}, latest {tag}  \u2014  Click to download and install  ")
         self._update_frame.grid(row=5, column=0, sticky="ew", padx=10, pady=(0, 2))
-        self._log_msg(f"Update available: {tag}. Click the update bar to install.")
+        self._log_msg(f"Update available: installed v{VERSION}, latest {tag}. Click the update bar to install.")
 
     def _install_update(self) -> None:
         if not self._update_available_release:
