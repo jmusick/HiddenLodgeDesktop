@@ -1,22 +1,53 @@
 # Local secrets / config
 config.json
 .env
+.env.*
+!.env.example
+
+# App runtime state
+*.db
+*.sqlite
+*.sqlite3
+*.pid
+*.lock
 
 # Python
 .venv/
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+*.so
+.python-version
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.pyre/
+.hypothesis/
+.tox/
+.nox/
 .coverage
+coverage.xml
+htmlcov/
+site/
+*.egg-info/
+pip-wheel-metadata/
 *.log
 
 # PyInstaller build artifacts
 build/
 dist/
+*.manifest
 *.spec
 
 # VS Code
 .vscode/
+
+# Other IDE / editor files
+.idea/
+*.code-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
