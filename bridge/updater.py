@@ -103,7 +103,11 @@ def download_and_apply_update(release: dict, progress_cb=None) -> None:
         )
 
     current_exe = pathlib.Path(sys.executable).resolve()
-    update_dest = current_exe.with_name("HiddenLodgeDesktop_update.exe")
+
+    # Download to the OS temp directory so the app folder stays clean.
+    temp_fd, temp_path = tempfile.mkstemp(prefix="HiddenLodgeDesktop_update_", suffix=".exe")
+    os.close(temp_fd)
+    update_dest = pathlib.Path(temp_path)
 
     # Download with optional progress reporting
     if progress_cb is None:
@@ -118,8 +122,10 @@ def download_and_apply_update(release: dict, progress_cb=None) -> None:
     # Write a self-deleting batch script that:
     #  1. Waits for this PID to exit (poll every 1 s)
     #  2. Replaces the exe
-    #  3. Relaunches the new version
+    #  3. Cleans up temporary/stale updater artifacts
+    #  4. Relaunches the new version
     pid = os.getpid()
+    legacy_update_exe = current_exe.with_name("HiddenLodgeDesktop_update.exe")
     bat = textwrap.dedent(f"""\
         @echo off
         :waitloop
@@ -131,9 +137,10 @@ def download_and_apply_update(release: dict, progress_cb=None) -> None:
         move /Y "{update_dest}" "{current_exe}"
         if errorlevel 1 (
             echo Update failed: could not replace exe. 1>&2
-            pause
+            if exist "{update_dest}" del /F /Q "{update_dest}" >nul 2>nul
             goto end
         )
+        if exist "{legacy_update_exe}" del /F /Q "{legacy_update_exe}" >nul 2>nul
         start "" "{current_exe}"
         :end
         del "%~f0"
