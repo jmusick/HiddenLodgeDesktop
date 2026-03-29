@@ -299,7 +299,7 @@ class App(tk.Tk):
         self._prep_btn.grid(row=0, column=0, sticky="w")
         ttk.Label(
             action_row,
-            text="Fetches current website data and writes it\nto SavedVariables. Do /reload in WoW to apply.",
+            text="Fetches current website data and writes it\nto SavedVariables. Close WoW before syncing, then relaunch WoW to load the update.",
             style="HL.Muted.TLabel",
             justify="left",
         ).grid(row=0, column=1, sticky="w", padx=(10, 0))
@@ -449,7 +449,9 @@ class App(tk.Tk):
     def _run_prep_sync(self) -> None:
         try:
             count = prep_bridge.sync(self._config)
-            self._log_msg(f"Data sync complete — {count} character entries written. Do /reload in WoW.")
+            self._log_msg(
+                f"Data sync complete — {count} character entries written. Relaunch WoW to load the updated data."
+            )
             self.after(0, lambda: self._status_var.set("Sync complete"))
         except Exception as exc:  # noqa: BLE001
             self._log_msg(f"Data sync error: {exc}")
