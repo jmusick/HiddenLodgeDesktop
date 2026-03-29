@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import pathlib
 import queue
 import subprocess
@@ -30,6 +31,127 @@ TEXT_PRIMARY = "#eaf4ff"
 TEXT_MUTED = "#8ca8c0"
 SUCCESS = "#66d69f"
 ERROR = "#f18f86"
+
+
+class SetupDialog(tk.Toplevel):
+    """First-run setup wizard shown when config.json is missing."""
+
+    _WOW_ROOTS = [
+        pathlib.Path("C:/Program Files (x86)/World of Warcraft"),
+        pathlib.Path("C:/Program Files/World of Warcraft"),
+    ]
+    _WOW_VARIANTS = ["_retail_", "_classic_", "_classic_era_"]
+
+    def __init__(self, parent: tk.Tk) -> None:
+        super().__init__(parent)
+        self.title("HiddenLodge Desktop — First-time Setup")
+        self.resizable(False, False)
+        self.configure(bg=BG_APP)
+        self.transient(parent)
+        self.grab_set()
+        self.saved = False  # set True when user saves successfully
+        self._build()
+        self._auto_detect_savedvars()
+        # Centre over parent
+        self.update_idletasks()
+        px = parent.winfo_x() + max((parent.winfo_width() - self.winfo_width()) // 2, 0)
+        py = parent.winfo_y() + max((parent.winfo_height() - self.winfo_height()) // 2, 0)
+        self.geometry(f"+{px}+{py}")
+
+    def _build(self) -> None:
+        pad = {"padx": 12, "pady": 6}
+
+        banner = ttk.Frame(self, style="HL.Banner.TFrame")
+        banner.grid(row=0, column=0, columnspan=2, sticky="ew", padx=10, pady=(10, 6))
+        ttk.Label(banner, text="First-time Setup", style="HL.Title.TLabel").grid(
+            row=0, column=0, sticky="w", padx=12, pady=(10, 0)
+        )
+        ttk.Label(
+            banner,
+            text="Enter your Hidden Lodge connection details to get started.",
+            style="HL.Subtitle.TLabel",
+        ).grid(row=1, column=0, sticky="w", padx=12, pady=(0, 10))
+
+        ttk.Label(self, text="Website URL:", style="HL.TLabel").grid(row=1, column=0, sticky="e", **pad)
+        self._url_var = tk.StringVar()
+        ttk.Entry(self, textvariable=self._url_var, width=52, style="HL.TEntry").grid(row=1, column=1, sticky="ew", **pad)
+
+        ttk.Label(self, text="API Key:", style="HL.TLabel").grid(row=2, column=0, sticky="e", **pad)
+        self._key_var = tk.StringVar()
+        ttk.Entry(self, textvariable=self._key_var, width=52, show="\u2022", style="HL.TEntry").grid(row=2, column=1, sticky="ew", **pad)
+
+        ttk.Label(self, text="WoW SavedVariables\n(HiddenLodge.lua):", style="HL.TLabel").grid(row=3, column=0, sticky="e", **pad)
+        sv_frame = ttk.Frame(self, style="HL.TFrame")
+        sv_frame.grid(row=3, column=1, sticky="ew", **pad)
+        sv_frame.columnconfigure(0, weight=1)
+        self._sv_var = tk.StringVar()
+        ttk.Entry(sv_frame, textvariable=self._sv_var, width=38, style="HL.TEntry").grid(row=0, column=0, sticky="ew", padx=(0, 4))
+        ttk.Button(sv_frame, text="Browse\u2026", command=self._browse_sv, style="HL.Secondary.TButton").grid(row=0, column=1)
+
+        self._status_var = tk.StringVar(value="Scanning for WoW SavedVariables\u2026")
+        ttk.Label(self, textvariable=self._status_var, style="HL.Muted.TLabel", wraplength=420).grid(
+            row=4, column=0, columnspan=2, sticky="w", padx=14, pady=(2, 4)
+        )
+
+        ttk.Button(self, text="  Save & Continue  ", command=self._save, style="HL.Primary.TButton").grid(
+            row=5, column=0, columnspan=2, pady=(4, 14)
+        )
+        self.columnconfigure(1, weight=1)
+
+    def _auto_detect_savedvars(self) -> None:
+        for root in self._WOW_ROOTS:
+            for variant in self._WOW_VARIANTS:
+                account_dir = root / variant / "WTF" / "Account"
+                if not account_dir.exists():
+                    continue
+                matches = sorted(account_dir.glob("*/SavedVariables/HiddenLodge.lua"))
+                if matches:
+                    best = max(matches, key=lambda p: p.stat().st_mtime)
+                    self._sv_var.set(str(best))
+                    self._status_var.set("WoW path auto-detected. Enter the Website URL and API Key, then click Save.")
+                    return
+        self._status_var.set("WoW path not found automatically — use Browse to locate HiddenLodge.lua.")
+
+    def _browse_sv(self) -> None:
+        path = filedialog.askopenfilename(
+            title="Select HiddenLodge.lua",
+            filetypes=[("Lua files", "*.lua"), ("All files", "*.*")],
+        )
+        if path:
+            self._sv_var.set(path)
+
+    def _save(self) -> None:
+        from bridge.config import CONFIG_PATH
+
+        url = self._url_var.get().strip().rstrip("/")
+        key = self._key_var.get().strip()
+        sv = self._sv_var.get().strip()
+
+        if not url.startswith("http"):
+            self._status_var.set("Please enter a valid Website URL (starting with https://).")
+            return
+        if not key:
+            self._status_var.set("Please enter your API Key.")
+            return
+        if not sv:
+            self._status_var.set("Please select the HiddenLodge.lua SavedVariables path.")
+            return
+        if not pathlib.Path(sv).parent.exists():
+            self._status_var.set("That SavedVariables directory does not exist. Check the path.")
+            return
+
+        data = {
+            "website_url": url,
+            "api_key": key,
+            "wow_savedvars_path": sv,
+            "poll_interval_seconds": 30,
+        }
+        try:
+            CONFIG_PATH.write_text(json.dumps(data, indent=4) + "\n", encoding="utf-8")
+            self.saved = True
+            self.destroy()
+        except Exception as exc:  # noqa: BLE001
+            self._status_var.set(f"Failed to write config: {exc}")
 
 
 class App(tk.Tk):
@@ -207,9 +329,14 @@ class App(tk.Tk):
             self._savedvars_var.set(str(self._config.wow_savedvars_path))
             self._log_msg(f"Config loaded. Website: {self._config.website_url}")
             self._status_var.set("Auto-sync ready")
-        except FileNotFoundError as exc:
-            self._log_msg(f"ERROR: {exc}")
-            self._status_var.set("Config missing")
+        except FileNotFoundError:
+            dlg = SetupDialog(self)
+            self.wait_window(dlg)
+            if dlg.saved:
+                self._load_config()  # retry now that config.json exists
+            else:
+                self._log_msg("Setup not completed. Fill in config.json and restart.")
+                self._status_var.set("Config missing")
 
     def _start_auto_sync(self) -> None:
         if not self._config:
