@@ -13,6 +13,11 @@ The file looks like:
                 ["charactername"] = "S Tier",
             },
         },
+        ["altNoteSync"] = {
+            ["preferredByName"] = {
+                ["charactername"] = "Mainname",
+            },
+        },
         ["ui"] = { ... },
     }
 """
@@ -61,6 +66,29 @@ def _preparedness_block(by_full: dict[str, str], by_name: dict[str, str], synced
     )
 
 
+def _alt_note_sync_block(
+    preferred_by_name: dict[str, str],
+    main_by_name: dict[str, str],
+    nickname_by_name: dict[str, str],
+    synced_at: int,
+) -> str:
+    """Return the complete Lua snippet for alt-note sync data at depth-1 indent."""
+    tab = "\t"
+    return (
+        f'{tab}["altNoteSync"] = {{\n'
+        f'{tab}\t["preferredByName"] = {_lua_string_table(preferred_by_name, depth=2)},\n'
+        f'{tab}\t["mainByName"] = {_lua_string_table(main_by_name, depth=2)},\n'
+        f'{tab}\t["nicknameByName"] = {_lua_string_table(nickname_by_name, depth=2)},\n'
+        f'{tab}\t["sync"] = {{\n'
+        f'{tab}\t\t["source"] = "HiddenLodgeDesktop",\n'
+        f'{tab}\t\t["syncedAt"] = {synced_at},\n'
+        f'{tab}\t\t["entries"] = {len(preferred_by_name)},\n'
+        f'{tab}\t\t["schemaVersion"] = 1,\n'
+        f'{tab}\t}},\n'
+        f'{tab}}}'
+    )
+
+
 # ---------------------------------------------------------------------------
 # File-level read / replace / write
 # ---------------------------------------------------------------------------
@@ -92,6 +120,27 @@ def _find_key_blocks(text: str, key: str) -> list[tuple[int, int]]:
     return spans
 
 
+def _upsert_top_level_block(text: str, key: str, new_block: str) -> str:
+    """Replace or insert a top-level key block in HiddenLodgeDB."""
+    spans = _find_key_blocks(text, key)
+
+    if spans:
+        rebuilt_parts: list[str] = []
+        cursor = 0
+        for idx, (start, end) in enumerate(spans):
+            rebuilt_parts.append(text[cursor:start])
+            if idx == 0:
+                rebuilt_parts.append(new_block + ",")
+            cursor = end
+        rebuilt_parts.append(text[cursor:])
+        return "".join(rebuilt_parts)
+
+    close = text.rfind("}")
+    if close == -1:
+        raise ValueError("Cannot find closing brace of HiddenLodgeDB in SavedVariables file.")
+    return text[:close] + new_block + ",\n" + text[close:]
+
+
 def update_preparedness(path: pathlib.Path, by_full: dict[str, str], by_name: dict[str, str]) -> None:
     """Update (or insert) the preparedness section in HiddenLodgeDB SavedVariables.
 
@@ -105,24 +154,30 @@ def update_preparedness(path: pathlib.Path, by_full: dict[str, str], by_name: di
         # Bootstrap a minimal file if it doesn't exist yet.
         text = "HiddenLodgeDB = {\n}\n"
 
-    spans = _find_key_blocks(text, "preparedness")
+    text = _upsert_top_level_block(text, "preparedness", new_block)
 
-    if spans:
-        # Keep one canonical preparedness block and remove duplicates.
-        rebuilt_parts: list[str] = []
-        cursor = 0
-        for idx, (start, end) in enumerate(spans):
-            rebuilt_parts.append(text[cursor:start])
-            if idx == 0:
-                rebuilt_parts.append(new_block + ",")
-            cursor = end
-        rebuilt_parts.append(text[cursor:])
-        text = "".join(rebuilt_parts)
+    path.write_text(text, encoding="utf-8")
+
+
+def update_alt_note_sync(
+    path: pathlib.Path,
+    preferred_by_name: dict[str, str],
+    main_by_name: dict[str, str],
+    nickname_by_name: dict[str, str],
+) -> None:
+    """Update (or insert) the alt-note sync section in HiddenLodgeDB SavedVariables."""
+    new_block = _alt_note_sync_block(
+        preferred_by_name=preferred_by_name,
+        main_by_name=main_by_name,
+        nickname_by_name=nickname_by_name,
+        synced_at=int(time.time()),
+    )
+
+    if path.exists():
+        text = path.read_text(encoding="utf-8")
     else:
-        # Insert before the closing brace of HiddenLodgeDB.
-        close = text.rfind("}")
-        if close == -1:
-            raise ValueError("Cannot find closing brace of HiddenLodgeDB in SavedVariables file.")
-        text = text[:close] + new_block + ",\n" + text[close:]
+        text = "HiddenLodgeDB = {\n}\n"
+
+    text = _upsert_top_level_block(text, "altNoteSync", new_block)
 
     path.write_text(text, encoding="utf-8")

@@ -14,6 +14,7 @@ from tkinter import filedialog, scrolledtext, ttk
 
 from bridge.config import Config
 from bridge import preparedness as prep_bridge
+from bridge import alt_note_sync as note_bridge
 from bridge import updater as updater_bridge
 
 APP_NAME = "HiddenLodge Desktop Bridge"
@@ -448,9 +449,12 @@ class App(tk.Tk):
 
     def _run_prep_sync(self) -> None:
         try:
-            count = prep_bridge.sync(self._config)
+            prep_count = prep_bridge.sync(self._config)
+            note_count = note_bridge.sync(self._config)
             self._log_msg(
-                f"Data sync complete — {count} character entries written. Relaunch WoW to load the updated data."
+                "Data sync complete — "
+                f"preparedness: {prep_count}, alt-note sync: {note_count}. "
+                "Relaunch WoW to load the updated data."
             )
             self.after(0, lambda: self._status_var.set("Sync complete"))
         except Exception as exc:  # noqa: BLE001
