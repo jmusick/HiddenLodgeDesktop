@@ -449,11 +449,11 @@ class App(tk.Tk):
 
     def _run_prep_sync(self) -> None:
         try:
-            prep_count = prep_bridge.sync(self._config)
+            prep_count, vault_score_count = prep_bridge.sync(self._config)
             note_count = note_bridge.sync(self._config)
             self._log_msg(
                 "Data sync complete — "
-                f"preparedness: {prep_count}, alt-note sync: {note_count}. "
+                f"preparedness: {prep_count}, great-vault score: {vault_score_count}, alt-note sync: {note_count}. "
                 "Relaunch WoW to load the updated data."
             )
             self.after(0, lambda: self._status_var.set("Sync complete"))

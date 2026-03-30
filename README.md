@@ -2,7 +2,7 @@
 
 Windows desktop companion for the HiddenLodge website and WoW addon data sync.
 
-The app fetches guild preparedness data from the website API and writes it into your WoW SavedVariables file (`HiddenLodge.lua`) so the addon can load the latest data in-game.
+The app fetches guild preparedness and Great Vault score data from the website API and writes it into your WoW SavedVariables file (`HiddenLodge.lua`) so the addon can load the latest data in-game.
 
 ## What It Does
 
@@ -91,7 +91,7 @@ The app checks the latest GitHub release and offers in-app update install when a
 1. App starts and loads `config.json`.
 2. If WoW is running, sync is deferred.
 3. When sync runs, app requests `GET /api/desktop/preparedness`.
-4. Response is normalized and written to `HiddenLodge.lua`.
+4. Response is normalized and written to `HiddenLodge.lua` for preparedness tiers and Great Vault scores.
 5. Relaunch WoW (or reload appropriately) to pick up new data.
 
 ## Troubleshooting
