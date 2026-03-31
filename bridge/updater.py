@@ -157,41 +157,70 @@ def download_and_apply_update(release: dict, progress_cb=None) -> None:
 
         urllib.request.urlretrieve(url, str(update_dest), reporthook=_reporthook)
 
-    # Write a self-deleting batch script that:
-    #  1. Waits for this PID to exit (poll every 1 s)
-    #  2. Replaces the exe
-    #  3. Cleans up temporary/stale updater artifacts
+    # Write a self-deleting PowerShell script that:
+    #  1. Waits for this PID to exit reliably
+    #  2. Replaces the exe with force + retries
+    #  3. Writes the installed sidecar version.txt
     #  4. Relaunches the new version
     pid = os.getpid()
     legacy_update_exe = current_exe.with_name("HiddenLodgeDesktop_update.exe")
-    bat = textwrap.dedent(f"""\
-        @echo off
-        :waitloop
-        tasklist /FI "PID eq {pid}" 2>nul | find "{pid}" > nul
-        if not errorlevel 1 (
-            ping -n 2 127.0.0.1 > nul
-            goto waitloop
-        )
-        move /Y "{update_dest}" "{current_exe}"
-        if errorlevel 1 (
-            echo Update failed: could not replace exe. 1>&2
-            if exist "{update_dest}" del /F /Q "{update_dest}" >nul 2>nul
-            goto end
-        )
-        if exist "{legacy_update_exe}" del /F /Q "{legacy_update_exe}" >nul 2>nul
-        > "{installed_version_file}" echo {release_version}
-        start "" "{current_exe}"
-        :end
-        del "%~f0"
+    script = textwrap.dedent(f"""\
+        $ErrorActionPreference = 'Stop'
+        $pidToWait = {pid}
+        $updateDest = '{str(update_dest).replace("'", "''")}'
+        $currentExe = '{str(current_exe).replace("'", "''")}'
+        $legacyUpdateExe = '{str(legacy_update_exe).replace("'", "''")}'
+        $installedVersionFile = '{str(installed_version_file).replace("'", "''")}'
+        $releaseVersion = '{release_version.replace("'", "''")}'
+        $scriptPath = $MyInvocation.MyCommand.Path
+
+        try {{
+            while (Get-Process -Id $pidToWait -ErrorAction SilentlyContinue) {{
+                Start-Sleep -Seconds 1
+            }}
+
+            $copied = $false
+            for ($attempt = 0; $attempt -lt 10 -and -not $copied; $attempt += 1) {{
+                try {{
+                    Copy-Item -LiteralPath $updateDest -Destination $currentExe -Force
+                    $copied = $true
+                }} catch {{
+                    Start-Sleep -Milliseconds 750
+                }}
+            }}
+
+            if (-not $copied) {{
+                throw 'Update failed: could not replace exe after multiple attempts.'
+            }}
+
+            if (Test-Path -LiteralPath $legacyUpdateExe) {{
+                Remove-Item -LiteralPath $legacyUpdateExe -Force -ErrorAction SilentlyContinue
+            }}
+            Set-Content -LiteralPath $installedVersionFile -Value $releaseVersion -NoNewline -Encoding UTF8
+            Start-Process -FilePath $currentExe
+        }} finally {{
+            if (Test-Path -LiteralPath $updateDest) {{
+                Remove-Item -LiteralPath $updateDest -Force -ErrorAction SilentlyContinue
+            }}
+            Start-Sleep -Milliseconds 250
+            Remove-Item -LiteralPath $scriptPath -Force -ErrorAction SilentlyContinue
+        }}
     """)
-    bat_fd, bat_path = tempfile.mkstemp(suffix=".bat")
+    script_fd, script_path = tempfile.mkstemp(suffix=".ps1")
     try:
-        os.write(bat_fd, bat.encode("ascii"))
+        os.write(script_fd, script.encode("utf-8"))
     finally:
-        os.close(bat_fd)
+        os.close(script_fd)
 
     subprocess.Popen(
-        ["cmd.exe", "/c", bat_path],
+        [
+            "powershell.exe",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            script_path,
+        ],
         creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
         close_fds=True,
     )
