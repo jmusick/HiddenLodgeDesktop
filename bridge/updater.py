@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -24,14 +25,37 @@ def _resource_dir() -> pathlib.Path:
     return pathlib.Path(__file__).resolve().parent.parent
 
 
+def _install_dir() -> pathlib.Path:
+    if getattr(sys, "frozen", False):
+        return pathlib.Path(sys.executable).parent
+    return pathlib.Path(__file__).resolve().parent.parent
+
+
+def _read_version_file(path: pathlib.Path) -> str | None:
+    try:
+        value = path.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        return None
+    return value or None
+
+
+def _clean_version(tag: str) -> str:
+    return str(tag or "").strip().lstrip("v")
+
+
 def get_current_version() -> str:
     """Read the packaged app version, falling back to a safe dev placeholder."""
-    version_file = _resource_dir() / VERSION_FILE_NAME
-    try:
-        version = version_file.read_text(encoding="utf-8").strip()
-    except FileNotFoundError:
-        return "0.0.0-dev"
-    return version or "0.0.0-dev"
+    # Prefer the installed sidecar next to the exe. This remains stable across
+    # onefile extraction behavior and avoids update loops from stale embedded metadata.
+    installed = _read_version_file(_install_dir() / VERSION_FILE_NAME)
+    if installed:
+        return installed
+
+    embedded = _read_version_file(_resource_dir() / VERSION_FILE_NAME)
+    if embedded:
+        return embedded
+
+    return "0.0.0-dev"
 
 
 def get_release_version(release: dict) -> str:
@@ -41,10 +65,22 @@ def get_release_version(release: dict) -> str:
 
 
 def _parse_version(tag: str) -> tuple[int, ...]:
-    """Parse 'v1.2.3' or '1.2.3' into (1, 2, 3)."""
-    tag = tag.lstrip("v").strip()
+    """Parse version strings into a comparable tuple, tolerating suffixes.
+
+    Examples:
+      - 'v1.2.3' -> (1, 2, 3)
+      - '1.2.3-beta.1' -> (1, 2, 3)
+    """
+    clean = _clean_version(tag)
+    if not clean:
+        return (0,)
+
+    match = re.match(r"^(\d+(?:\.\d+)*)", clean)
+    if not match:
+        return (0,)
+
     try:
-        return tuple(int(x) for x in tag.split("."))
+        return tuple(int(x) for x in match.group(1).split("."))
     except ValueError:
         return (0,)
 
@@ -101,8 +137,10 @@ def download_and_apply_update(release: dict, progress_cb=None) -> None:
         raise RuntimeError(
             f"No '{ASSET_NAME}' asset found in release {release.get('tag_name', '?')}."
         )
+    release_version = _clean_version(release.get("tag_name", ""))
 
     current_exe = pathlib.Path(sys.executable).resolve()
+    installed_version_file = current_exe.parent / VERSION_FILE_NAME
 
     # Download to the OS temp directory so the app folder stays clean.
     temp_fd, temp_path = tempfile.mkstemp(prefix="HiddenLodgeDesktop_update_", suffix=".exe")
@@ -141,6 +179,7 @@ def download_and_apply_update(release: dict, progress_cb=None) -> None:
             goto end
         )
         if exist "{legacy_update_exe}" del /F /Q "{legacy_update_exe}" >nul 2>nul
+        > "{installed_version_file}" echo {release_version}
         start "" "{current_exe}"
         :end
         del "%~f0"

@@ -15,6 +15,7 @@ from tkinter import filedialog, scrolledtext, ttk
 from bridge.config import Config
 from bridge import preparedness as prep_bridge
 from bridge import alt_note_sync as note_bridge
+from bridge import raid_signup as raid_signup_bridge
 from bridge import updater as updater_bridge
 
 APP_NAME = "HiddenLodge Desktop Bridge"
@@ -451,9 +452,12 @@ class App(tk.Tk):
         try:
             prep_count, vault_score_count = prep_bridge.sync(self._config)
             note_count = note_bridge.sync(self._config)
+            signup_count, signup_raid_name, _signup_raid_start_utc = raid_signup_bridge.sync(self._config)
+            signup_target = signup_raid_name or "No raid scheduled today"
             self._log_msg(
                 "Data sync complete — "
-                f"preparedness: {prep_count}, great-vault score: {vault_score_count}, alt-note sync: {note_count}. "
+                f"preparedness: {prep_count}, great-vault score: {vault_score_count}, alt-note sync: {note_count}, "
+                f"raid signups: {signup_count} ({signup_target}). "
                 "Relaunch WoW to load the updated data."
             )
             self.after(0, lambda: self._status_var.set("Sync complete"))

@@ -117,6 +117,35 @@ def _great_vault_score_block(by_full: dict[str, int], by_name: dict[str, int], s
     )
 
 
+def _raid_signup_block(
+    by_full_status: dict[str, str],
+    by_name_status: dict[str, str],
+    by_full_signed_at: dict[str, int],
+    by_name_signed_at: dict[str, int],
+    raid_name: str,
+    raid_start_utc: int,
+    synced_at: int,
+) -> str:
+    """Return the complete Lua snippet for today's raid signup key at depth-1 indent."""
+    tab = "\t"
+    return (
+        f'{tab}["raidSignup"] = {{\n'
+        f'{tab}\t["byFullStatus"] = {_lua_string_table(by_full_status, depth=2)},\n'
+        f'{tab}\t["byNameStatus"] = {_lua_string_table(by_name_status, depth=2)},\n'
+        f'{tab}\t["byFullSignedAt"] = {_lua_number_table(by_full_signed_at, depth=2)},\n'
+        f'{tab}\t["byNameSignedAt"] = {_lua_number_table(by_name_signed_at, depth=2)},\n'
+        f'{tab}\t["sync"] = {{\n'
+        f'{tab}\t\t["source"] = "HiddenLodgeDesktop",\n'
+        f'{tab}\t\t["syncedAt"] = {synced_at},\n'
+        f'{tab}\t\t["entries"] = {len(by_full_status)},\n'
+        f'{tab}\t\t["schemaVersion"] = 1,\n'
+        f'{tab}\t\t["raidName"] = "{_lua_escape(raid_name)}",\n'
+        f'{tab}\t\t["raidStartUtc"] = {int(raid_start_utc)},\n'
+        f'{tab}\t}},\n'
+        f'{tab}}}'
+    )
+
+
 # ---------------------------------------------------------------------------
 # File-level read / replace / write
 # ---------------------------------------------------------------------------
@@ -221,5 +250,35 @@ def update_great_vault_score(path: pathlib.Path, by_full: dict[str, int], by_nam
         text = "HiddenLodgeDB = {\n}\n"
 
     text = _upsert_top_level_block(text, "greatVaultScore", new_block)
+
+    path.write_text(text, encoding="utf-8")
+
+
+def update_raid_signup(
+    path: pathlib.Path,
+    by_full_status: dict[str, str],
+    by_name_status: dict[str, str],
+    by_full_signed_at: dict[str, int],
+    by_name_signed_at: dict[str, int],
+    raid_name: str,
+    raid_start_utc: int,
+) -> None:
+    """Update (or insert) the raidSignup section in HiddenLodgeDB SavedVariables."""
+    new_block = _raid_signup_block(
+        by_full_status=by_full_status,
+        by_name_status=by_name_status,
+        by_full_signed_at=by_full_signed_at,
+        by_name_signed_at=by_name_signed_at,
+        raid_name=raid_name,
+        raid_start_utc=raid_start_utc,
+        synced_at=int(time.time()),
+    )
+
+    if path.exists():
+        text = path.read_text(encoding="utf-8")
+    else:
+        text = "HiddenLodgeDB = {\n}\n"
+
+    text = _upsert_top_level_block(text, "raidSignup", new_block)
 
     path.write_text(text, encoding="utf-8")
