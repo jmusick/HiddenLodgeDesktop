@@ -20,7 +20,7 @@ from bridge import updater as updater_bridge
 
 APP_NAME = "HiddenLodge Desktop Bridge"
 ADDON_SAVEDVARS_NAME = "HiddenLodge.lua"
-AUTO_SYNC_SECONDS = 30 * 60
+AUTO_SYNC_SECONDS = 6 * 60 * 60
 VERSION = updater_bridge.get_current_version()
 
 BG_APP = "#081321"
@@ -146,7 +146,7 @@ class SetupDialog(tk.Toplevel):
             "website_url": url,
             "api_key": key,
             "wow_savedvars_path": sv,
-            "poll_interval_seconds": 30,
+            "poll_interval_seconds": AUTO_SYNC_SECONDS,
         }
         try:
             CONFIG_PATH.write_text(json.dumps(data, indent=4) + "\n", encoding="utf-8")
@@ -263,7 +263,7 @@ class App(tk.Tk):
         auto_row.grid(row=2, column=0, sticky="ew", **pad)
         ttk.Label(
             auto_row,
-            text="Auto-sync runs on launch and every 30 minutes while open.",
+            text="Auto-sync runs on launch and every 6 hours while open.",
             style="HL.Muted.TLabel",
         ).pack(side="left")
 
@@ -525,12 +525,19 @@ class App(tk.Tk):
             try:
                 updater_bridge.download_and_apply_update(release)
                 self.after(0, lambda: self._log_msg("Download complete. Closing app — it will relaunch automatically."))
-                self.after(1500, self.destroy)
+                self.after(1500, self._shutdown_for_update)
             except Exception as exc:  # noqa: BLE001
                 self.after(0, lambda: self._log_msg(f"Update failed: {exc}"))
                 self.after(0, lambda: self._update_btn.config(state="normal", text=f"  Retry update — {tag}  "))
 
         threading.Thread(target=_do_update, daemon=True).start()
+
+    def _shutdown_for_update(self) -> None:
+        # Force process termination after UI teardown so the updater script can replace the exe.
+        try:
+            self.destroy()
+        finally:
+            raise SystemExit(0)
 
     # ------------------------------------------------------------------
     # Cleanup

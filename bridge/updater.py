@@ -141,11 +141,10 @@ def download_and_apply_update(release: dict, progress_cb=None) -> None:
 
     current_exe = pathlib.Path(sys.executable).resolve()
     installed_version_file = current_exe.parent / VERSION_FILE_NAME
+    staged_update_exe = current_exe.with_name("HiddenLodgeDesktop_update.exe")
 
-    # Download to the OS temp directory so the app folder stays clean.
-    temp_fd, temp_path = tempfile.mkstemp(prefix="HiddenLodgeDesktop_update_", suffix=".exe")
-    os.close(temp_fd)
-    update_dest = pathlib.Path(temp_path)
+    # Stage next to the running exe so replacement and fallback launch do not depend on temp paths.
+    update_dest = staged_update_exe
 
     # Download with optional progress reporting
     if progress_cb is None:
@@ -163,13 +162,11 @@ def download_and_apply_update(release: dict, progress_cb=None) -> None:
     #  3. Writes the installed sidecar version.txt
     #  4. Relaunches the new version
     pid = os.getpid()
-    legacy_update_exe = current_exe.with_name("HiddenLodgeDesktop_update.exe")
     script = textwrap.dedent(f"""\
         $ErrorActionPreference = 'Stop'
         $pidToWait = {pid}
         $updateDest = '{str(update_dest).replace("'", "''")}'
         $currentExe = '{str(current_exe).replace("'", "''")}'
-        $legacyUpdateExe = '{str(legacy_update_exe).replace("'", "''")}'
         $installedVersionFile = '{str(installed_version_file).replace("'", "''")}'
         $releaseVersion = '{release_version.replace("'", "''")}'
         $scriptPath = $MyInvocation.MyCommand.Path
@@ -189,19 +186,17 @@ def download_and_apply_update(release: dict, progress_cb=None) -> None:
                 }}
             }}
 
-            if (-not $copied) {{
-                throw 'Update failed: could not replace exe after multiple attempts.'
+            if ($copied) {{
+                Set-Content -LiteralPath $installedVersionFile -Value $releaseVersion -NoNewline -Encoding UTF8
+                Start-Process -FilePath $currentExe
+                if (Test-Path -LiteralPath $updateDest) {{
+                    Remove-Item -LiteralPath $updateDest -Force -ErrorAction SilentlyContinue
+                }}
+            }} else {{
+                # Fallback: launch the staged update directly if in-place replacement fails.
+                Start-Process -FilePath $updateDest
             }}
-
-            if (Test-Path -LiteralPath $legacyUpdateExe) {{
-                Remove-Item -LiteralPath $legacyUpdateExe -Force -ErrorAction SilentlyContinue
-            }}
-            Set-Content -LiteralPath $installedVersionFile -Value $releaseVersion -NoNewline -Encoding UTF8
-            Start-Process -FilePath $currentExe
         }} finally {{
-            if (Test-Path -LiteralPath $updateDest) {{
-                Remove-Item -LiteralPath $updateDest -Force -ErrorAction SilentlyContinue
-            }}
             Start-Sleep -Milliseconds 250
             Remove-Item -LiteralPath $scriptPath -Force -ErrorAction SilentlyContinue
         }}
@@ -212,15 +207,22 @@ def download_and_apply_update(release: dict, progress_cb=None) -> None:
     finally:
         os.close(script_fd)
 
-    subprocess.Popen(
-        [
-            "powershell.exe",
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            script_path,
-        ],
-        creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
-        close_fds=True,
-    )
+    for shell in ("powershell.exe", "pwsh.exe"):
+        try:
+            subprocess.Popen(
+                [
+                    shell,
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    script_path,
+                ],
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                close_fds=True,
+            )
+            return
+        except FileNotFoundError:
+            continue
+
+    raise RuntimeError("Could not start PowerShell to apply update.")

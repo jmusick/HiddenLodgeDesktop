@@ -24,7 +24,7 @@ class Config:
         self.website_url: str = data["website_url"].rstrip("/")
         self.api_key: str = data["api_key"]
         self.wow_savedvars_path: pathlib.Path = pathlib.Path(data["wow_savedvars_path"])
-        self.poll_interval_seconds: int = int(data.get("poll_interval_seconds", 30))
+        self.poll_interval_seconds: int = int(data.get("poll_interval_seconds", 21600))
 
     @classmethod
     def load(cls) -> "Config":

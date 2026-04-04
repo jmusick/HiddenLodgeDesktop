@@ -7,7 +7,7 @@ The app fetches guild preparedness, attendance, and Great Vault score data from 
 ## What It Does
 
 - Provides a GUI for first-time setup and daily sync use.
-- Syncs on startup and every 30 minutes while open.
+- Syncs on startup and every 6 hours while open.
 - Supports manual sync with a single button.
 - Avoids syncing while WoW is running (to prevent SavedVariables conflicts).
 - Can check GitHub releases and self-update when running as the packaged `.exe`.
@@ -47,7 +47,7 @@ Example:
     "website_url": "https://hiddenlodge.example.com",
     "api_key": "YOUR_DESKTOP_API_KEY_HERE",
     "wow_savedvars_path": "C:\\Program Files (x86)\\World of Warcraft\\_retail_\\WTF\\Account\\YOUR_ACCOUNT\\SavedVariables\\HiddenLodge.lua",
-    "poll_interval_seconds": 30
+    "poll_interval_seconds": 21600
 }
 ```
 
@@ -56,7 +56,7 @@ Fields:
 - `website_url`: Base URL for your HiddenLodge website.
 - `api_key`: Desktop key used for API authentication.
 - `wow_savedvars_path`: Full path to `HiddenLodge.lua` in your WoW `SavedVariables` directory.
-- `poll_interval_seconds`: API poll interval used by bridge components.
+- `poll_interval_seconds`: Saved for compatibility in config files; the desktop app currently auto-syncs on launch and every 6 hours while open.
 
 ## Build Standalone EXE
 
@@ -106,6 +106,9 @@ The app checks the latest GitHub release and offers in-app update install when a
   - Relaunch WoW after sync.
 - Auto-update not available:
   - Auto-update only works in packaged `.exe` mode, not when running `python main.py`.
+- App closed during update and did not relaunch:
+  - Reopen `HiddenLodgeDesktop.exe` manually once, then click update again.
+  - If update still fails, download the latest `HiddenLodgeDesktop.exe` from the GitHub release page and replace the local exe.
 
 ## Development Notes
 
