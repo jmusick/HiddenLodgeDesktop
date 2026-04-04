@@ -49,13 +49,22 @@ def _lua_string_table(data: dict[str, str], depth: int) -> str:
     return ("\n" + tab).join(lines)
 
 
-def _lua_number_table(data: dict[str, int], depth: int) -> str:
+def _lua_numeric_literal(value: int | float) -> str:
+    if isinstance(value, float):
+        rounded = round(value, 1)
+        if rounded.is_integer():
+            return str(int(rounded))
+        return f"{rounded:.1f}"
+    return str(int(value))
+
+
+def _lua_number_table(data: dict[str, int | float], depth: int) -> str:
     """Render a flat {key -> number} mapping as a Lua table body."""
     tab = "\t" * depth
     inner = "\t" * (depth + 1)
     lines = ["{"]
     for key in sorted(data):
-        lines.append(f'{inner}["{_lua_escape(key)}"] = {int(data[key])},')
+        lines.append(f'{inner}["{_lua_escape(key)}"] = {_lua_numeric_literal(data[key])},')
     lines.append(tab + "}")
     return ("\n" + tab).join(lines)
 
@@ -105,6 +114,23 @@ def _great_vault_score_block(by_full: dict[str, int], by_name: dict[str, int], s
     tab = "\t"
     return (
         f'{tab}["greatVaultScore"] = {{\n'
+        f'{tab}\t["byFull"] = {_lua_number_table(by_full, depth=2)},\n'
+        f'{tab}\t["byName"] = {_lua_number_table(by_name, depth=2)},\n'
+        f'{tab}\t["sync"] = {{\n'
+        f'{tab}\t\t["source"] = "HiddenLodgeDesktop",\n'
+        f'{tab}\t\t["syncedAt"] = {synced_at},\n'
+        f'{tab}\t\t["entries"] = {len(by_full)},\n'
+        f'{tab}\t\t["schemaVersion"] = 1,\n'
+        f'{tab}\t}},\n'
+        f'{tab}}}'
+    )
+
+
+def _attendance_score_block(by_full: dict[str, float], by_name: dict[str, float], synced_at: int) -> str:
+    """Return the complete Lua snippet for the attendance score key at depth-1 indent."""
+    tab = "\t"
+    return (
+        f'{tab}["attendanceScore"] = {{\n'
         f'{tab}\t["byFull"] = {_lua_number_table(by_full, depth=2)},\n'
         f'{tab}\t["byName"] = {_lua_number_table(by_name, depth=2)},\n'
         f'{tab}\t["sync"] = {{\n'
@@ -250,6 +276,20 @@ def update_great_vault_score(path: pathlib.Path, by_full: dict[str, int], by_nam
         text = "HiddenLodgeDB = {\n}\n"
 
     text = _upsert_top_level_block(text, "greatVaultScore", new_block)
+
+    path.write_text(text, encoding="utf-8")
+
+
+def update_attendance_score(path: pathlib.Path, by_full: dict[str, float], by_name: dict[str, float]) -> None:
+    """Update (or insert) the attendanceScore section in HiddenLodgeDB SavedVariables."""
+    new_block = _attendance_score_block(by_full, by_name, synced_at=int(time.time()))
+
+    if path.exists():
+        text = path.read_text(encoding="utf-8")
+    else:
+        text = "HiddenLodgeDB = {\n}\n"
+
+    text = _upsert_top_level_block(text, "attendanceScore", new_block)
 
     path.write_text(text, encoding="utf-8")
 

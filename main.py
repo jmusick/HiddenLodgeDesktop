@@ -450,13 +450,13 @@ class App(tk.Tk):
 
     def _run_prep_sync(self) -> None:
         try:
-            prep_count, vault_score_count = prep_bridge.sync(self._config)
+            prep_count, vault_score_count, attendance_score_count = prep_bridge.sync(self._config)
             note_count = note_bridge.sync(self._config)
             signup_count, signup_raid_name, _signup_raid_start_utc = raid_signup_bridge.sync(self._config)
             signup_target = signup_raid_name or "No raid scheduled today"
             self._log_msg(
                 "Data sync complete — "
-                f"preparedness: {prep_count}, great-vault score: {vault_score_count}, alt-note sync: {note_count}, "
+                f"preparedness: {prep_count}, great-vault score: {vault_score_count}, attendance: {attendance_score_count}, alt-note sync: {note_count}, "
                 f"raid signups: {signup_count} ({signup_target}). "
                 "Relaunch WoW to load the updated data."
             )
