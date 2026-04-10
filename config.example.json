@@ -1,4 +1,9 @@
 {
+    "environment": "prod",
+    "website_url_prod": "https://hiddenlodge.example.com",
+    "website_url_local": "http://localhost:4321",
+    "api_key_prod": "YOUR_DESKTOP_API_KEY_HERE",
+    "api_key_local": "YOUR_DESKTOP_API_KEY_HERE",
     "website_url": "https://hiddenlodge.example.com",
     "api_key": "YOUR_DESKTOP_API_KEY_HERE",
     "wow_savedvars_path": "C:\\Program Files (x86)\\World of Warcraft\\_retail_\\WTF\\Account\\YOUR_ACCOUNT\\SavedVariables\\HiddenLodge.lua",

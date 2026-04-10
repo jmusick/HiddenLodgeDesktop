@@ -16,6 +16,7 @@ from bridge.config import Config
 from bridge import preparedness as prep_bridge
 from bridge import alt_note_sync as note_bridge
 from bridge import raid_signup as raid_signup_bridge
+from bridge import loot_history as loot_history_bridge
 from bridge import updater as updater_bridge
 
 APP_NAME = "HiddenLodge Desktop Bridge"
@@ -143,6 +144,11 @@ class SetupDialog(tk.Toplevel):
             return
 
         data = {
+            "environment": "prod",
+            "website_url_prod": url,
+            "website_url_local": "http://localhost:4321",
+            "api_key_prod": key,
+            "api_key_local": key,
             "website_url": url,
             "api_key": key,
             "wow_savedvars_path": sv,
@@ -267,11 +273,34 @@ class App(tk.Tk):
             style="HL.Muted.TLabel",
         ).pack(side="left")
 
+        env_row = ttk.Frame(self, style="HL.TFrame")
+        env_row.grid(row=3, column=0, sticky="ew", **pad)
+        ttk.Label(env_row, text="Environment:", style="HL.TLabel").pack(side="left")
+        self._environment_var = tk.StringVar(value="prod")
+        self._env_prod_radio = ttk.Radiobutton(
+            env_row,
+            text="Prod",
+            value="prod",
+            variable=self._environment_var,
+            command=self._on_environment_changed,
+        )
+        self._env_prod_radio.pack(side="left", padx=(8, 2))
+        self._env_local_radio = ttk.Radiobutton(
+            env_row,
+            text="Local Dev",
+            value="local",
+            variable=self._environment_var,
+            command=self._on_environment_changed,
+        )
+        self._env_local_radio.pack(side="left", padx=(4, 12))
+        self._endpoint_var = tk.StringVar(value="")
+        ttk.Label(env_row, textvariable=self._endpoint_var, style="HL.Muted.TLabel").pack(side="left")
+
         sep = ttk.Separator(self, orient="horizontal")
-        sep.grid(row=3, column=0, sticky="ew", padx=10, pady=3)
+        sep.grid(row=4, column=0, sticky="ew", padx=10, pady=3)
 
         sync_frame = ttk.LabelFrame(self, text="Sync to WoW", style="HL.TLabelframe")
-        sync_frame.grid(row=4, column=0, sticky="ew", padx=10, pady=4)
+        sync_frame.grid(row=5, column=0, sticky="ew", padx=10, pady=4)
         sync_frame.columnconfigure(0, weight=1)
 
         path_row = ttk.Frame(sync_frame, style="HL.Card.TFrame")
@@ -317,7 +346,7 @@ class App(tk.Tk):
         self._update_btn.pack(fill="x", padx=0, pady=2)
 
         self._log = scrolledtext.ScrolledText(self, width=70, height=20, state="disabled")
-        self._log.grid(row=6, column=0, sticky="nsew", **pad)
+        self._log.grid(row=7, column=0, sticky="nsew", **pad)
         self._log.configure(
             bg=BG_INPUT,
             fg=TEXT_PRIMARY,
@@ -330,7 +359,7 @@ class App(tk.Tk):
         )
 
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(6, weight=1)
+        self.rowconfigure(7, weight=1)
 
     # ------------------------------------------------------------------
     # Config
@@ -340,6 +369,8 @@ class App(tk.Tk):
         try:
             self._config = Config.load()
             self._savedvars_var.set(str(self._config.wow_savedvars_path))
+            self._environment_var.set(self._config.environment)
+            self._refresh_endpoint_label()
             self._log_msg(f"Config loaded. Website: {self._config.website_url}")
             self._status_var.set("Auto-sync ready")
         except FileNotFoundError:
@@ -355,6 +386,29 @@ class App(tk.Tk):
         if not self._config:
             return
         self._trigger_sync("Startup sync…")
+
+    def _refresh_endpoint_label(self) -> None:
+        if not self._config:
+            self._endpoint_var.set("")
+            return
+        self._endpoint_var.set(f"Endpoint: {self._config.website_url}")
+
+    def _on_environment_changed(self) -> None:
+        if not self._config:
+            return
+
+        selected = self._environment_var.get().strip().lower()
+        if selected not in {"prod", "local"}:
+            return
+
+        if self._config.environment == selected:
+            return
+
+        self._config.environment = selected
+        self._config.save()
+        self._refresh_endpoint_label()
+        label = "Local Dev" if selected == "local" else "Prod"
+        self._log_msg(f"Environment switched to {label}. Using {self._config.website_url}")
 
     def _schedule_next_sync(self) -> None:
         if self._auto_sync_job is not None:
@@ -453,11 +507,12 @@ class App(tk.Tk):
             prep_count, vault_score_count, attendance_score_count = prep_bridge.sync(self._config)
             note_count = note_bridge.sync(self._config)
             signup_count, signup_raid_name, _signup_raid_start_utc = raid_signup_bridge.sync(self._config)
+            loot_history_count = loot_history_bridge.sync(self._config)
             signup_target = signup_raid_name or "No raid scheduled today"
             self._log_msg(
                 "Data sync complete — "
                 f"preparedness: {prep_count}, great-vault score: {vault_score_count}, attendance: {attendance_score_count}, alt-note sync: {note_count}, "
-                f"raid signups: {signup_count} ({signup_target}). "
+                f"raid signups: {signup_count} ({signup_target}), loot history: {loot_history_count}. "
                 "Relaunch WoW to load the updated data."
             )
             self.after(0, lambda: self._status_var.set("Sync complete"))

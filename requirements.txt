@@ -2,6 +2,7 @@
 httpx>=0.27,<1          # HTTP client for website API calls
 watchdog>=4.0,<5        # File system monitoring for WoW SavedVariables
 python-dotenv>=1.0,<2   # .env config loading
+slpp>=1.2,<2            # Lua table decoding for RCLootCouncil loot history
 
 # Build (not needed at runtime, but keep here for dev convenience)
 pyinstaller>=6.0,<7

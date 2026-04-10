@@ -21,10 +21,29 @@ EXAMPLE_PATH = _app_dir() / "config.example.json"
 
 class Config:
     def __init__(self, data: dict) -> None:
-        self.website_url: str = data["website_url"].rstrip("/")
-        self.api_key: str = data["api_key"]
+        # Backward compatible defaults from legacy flat keys.
+        legacy_website_url = str(data.get("website_url", "")).rstrip("/")
+        legacy_api_key = str(data.get("api_key", ""))
+
+        self.environment: str = str(data.get("environment", "prod")).strip().lower() or "prod"
+        if self.environment not in {"prod", "local"}:
+            self.environment = "prod"
+
+        self.website_url_prod: str = str(data.get("website_url_prod", legacy_website_url)).rstrip("/")
+        self.website_url_local: str = str(data.get("website_url_local", "http://localhost:4321")).rstrip("/")
+        self.api_key_prod: str = str(data.get("api_key_prod", legacy_api_key))
+        self.api_key_local: str = str(data.get("api_key_local", legacy_api_key))
+
         self.wow_savedvars_path: pathlib.Path = pathlib.Path(data["wow_savedvars_path"])
         self.poll_interval_seconds: int = int(data.get("poll_interval_seconds", 21600))
+
+    @property
+    def website_url(self) -> str:
+        return self.website_url_local if self.environment == "local" else self.website_url_prod
+
+    @property
+    def api_key(self) -> str:
+        return self.api_key_local if self.environment == "local" else self.api_key_prod
 
     @classmethod
     def load(cls) -> "Config":
@@ -47,6 +66,12 @@ class Config:
 
     def to_dict(self) -> dict:
         return {
+            "environment": self.environment,
+            "website_url_prod": self.website_url_prod,
+            "website_url_local": self.website_url_local,
+            "api_key_prod": self.api_key_prod,
+            "api_key_local": self.api_key_local,
+            # Keep legacy keys for external tooling/scripts that still read them.
             "website_url": self.website_url,
             "api_key": self.api_key,
             "wow_savedvars_path": str(self.wow_savedvars_path),

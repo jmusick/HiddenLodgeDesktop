@@ -26,7 +26,7 @@ Write-Host "Building HiddenLodge Desktop Bridge..." -ForegroundColor Cyan
     --add-data "config.example.json;." `
     --add-data "version.txt;." `
     --distpath $OutputDir `
-    --buildpath $BuildDir `
+    --workpath $BuildDir `
     --specpath $ScriptDir `
     $MainScript
 
