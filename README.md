@@ -112,6 +112,9 @@ The app checks the latest GitHub release and offers in-app update install when a
 - App closed during update and did not relaunch:
   - Reopen `HiddenLodgeDesktop.exe` manually once, then click update again.
   - If update still fails, download the latest `HiddenLodgeDesktop.exe` from the GitHub release page and replace the local exe.
+- Update error popup (for example Python DLL load failure):
+  - Check `HiddenLodgeDesktop-updater.log` in the same folder as `HiddenLodgeDesktop.exe` for step-by-step updater diagnostics.
+  - If present, also keep `HiddenLodgeDesktop_update.exe` in that folder; it is the staged fallback executable.
 
 ## Development Notes
 

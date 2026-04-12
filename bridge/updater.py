@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+from datetime import datetime
 import urllib.error
 import urllib.request
 
@@ -17,6 +18,7 @@ GITHUB_REPO = "jmusick/HiddenLodgeDesktop"
 RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 ASSET_NAME = "HiddenLodgeDesktop.exe"
 VERSION_FILE_NAME = "version.txt"
+UPDATE_LOG_FILE_NAME = "HiddenLodgeDesktop-updater.log"
 
 
 def _resource_dir() -> pathlib.Path:
@@ -41,6 +43,18 @@ def _read_version_file(path: pathlib.Path) -> str | None:
 
 def _clean_version(tag: str) -> str:
     return str(tag or "").strip().lstrip("v")
+
+
+def _append_update_log(message: str) -> None:
+    """Best-effort updater diagnostics written next to the installed exe."""
+    try:
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_path = _install_dir() / UPDATE_LOG_FILE_NAME
+        with log_path.open("a", encoding="utf-8") as fh:
+            fh.write(f"[{ts}] {message}\n")
+    except Exception:
+        # Logging must never break update flow.
+        pass
 
 
 def get_current_version() -> str:
@@ -132,12 +146,15 @@ def download_and_apply_update(release: dict, progress_cb=None) -> None:
             "When running from source, update via: git pull"
         )
 
+    _append_update_log("Update install requested")
+
     url = _find_exe_asset_url(release)
     if not url:
         raise RuntimeError(
             f"No '{ASSET_NAME}' asset found in release {release.get('tag_name', '?')}."
         )
     release_version = _clean_version(release.get("tag_name", ""))
+    _append_update_log(f"Resolved release {release.get('tag_name', '?')} -> {release_version}")
 
     current_exe = pathlib.Path(sys.executable).resolve()
     installed_version_file = current_exe.parent / VERSION_FILE_NAME
@@ -145,6 +162,7 @@ def download_and_apply_update(release: dict, progress_cb=None) -> None:
 
     # Stage next to the running exe so replacement and fallback launch do not depend on temp paths.
     update_dest = staged_update_exe
+    _append_update_log(f"Staging update to {update_dest}")
 
     # Download with optional progress reporting
     if progress_cb is None:
@@ -156,11 +174,13 @@ def download_and_apply_update(release: dict, progress_cb=None) -> None:
 
         urllib.request.urlretrieve(url, str(update_dest), reporthook=_reporthook)
 
+    _append_update_log("Download complete; preparing replacement script")
+
     # Write a self-deleting PowerShell script that:
     #  1. Waits for this PID to exit reliably
     #  2. Replaces the exe with force + retries
     #  3. Writes the installed sidecar version.txt
-    #  4. Relaunches the new version
+    #  4. Relaunches the new version with retries and fallback
     pid = os.getpid()
     script = textwrap.dedent(f"""\
         $ErrorActionPreference = 'Stop'
@@ -168,34 +188,77 @@ def download_and_apply_update(release: dict, progress_cb=None) -> None:
         $updateDest = '{str(update_dest).replace("'", "''")}'
         $currentExe = '{str(current_exe).replace("'", "''")}'
         $installedVersionFile = '{str(installed_version_file).replace("'", "''")}'
+        $updateLogFile = '{str(current_exe.parent / UPDATE_LOG_FILE_NAME).replace("'", "''")}'
         $releaseVersion = '{release_version.replace("'", "''")}'
         $scriptPath = $MyInvocation.MyCommand.Path
 
+        function Write-UpdateLog([string]$msg) {{
+            try {{
+                $ts = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+                Add-Content -LiteralPath $updateLogFile -Value "[$ts] [ps] $msg" -Encoding UTF8
+            }} catch {{
+            }}
+        }}
+
         try {{
+            Write-UpdateLog "Updater script started"
             while (Get-Process -Id $pidToWait -ErrorAction SilentlyContinue) {{
                 Start-Sleep -Seconds 1
             }}
+            Write-UpdateLog "Original process exited"
 
             $copied = $false
             for ($attempt = 0; $attempt -lt 10 -and -not $copied; $attempt += 1) {{
                 try {{
                     Copy-Item -LiteralPath $updateDest -Destination $currentExe -Force
                     $copied = $true
+                    Write-UpdateLog "Replacement copy succeeded on attempt $($attempt + 1)"
                 }} catch {{
+                    Write-UpdateLog "Replacement copy failed on attempt $($attempt + 1): $($_.Exception.Message)"
                     Start-Sleep -Milliseconds 750
                 }}
             }}
 
             if ($copied) {{
                 Set-Content -LiteralPath $installedVersionFile -Value $releaseVersion -NoNewline -Encoding UTF8
-                Start-Process -FilePath $currentExe
-                if (Test-Path -LiteralPath $updateDest) {{
-                    Remove-Item -LiteralPath $updateDest -Force -ErrorAction SilentlyContinue
+                Write-UpdateLog "Installed version file updated to $releaseVersion"
+
+                # One-file PyInstaller launches can fail transiently while AV scanners
+                # inspect the freshly replaced binary; retry before falling back.
+                $started = $false
+                for ($launchAttempt = 0; $launchAttempt -lt 3 -and -not $started; $launchAttempt += 1) {{
+                    try {{
+                        $proc = Start-Process -FilePath $currentExe -PassThru
+                        Start-Sleep -Milliseconds 1200
+                        if ($proc -and -not $proc.HasExited) {{
+                            $started = $true
+                            Write-UpdateLog "Launch succeeded for replaced exe on attempt $($launchAttempt + 1); pid=$($proc.Id)"
+                        }} else {{
+                            Write-UpdateLog "Launch attempt $($launchAttempt + 1) exited immediately"
+                        }}
+                    }} catch {{
+                        Write-UpdateLog "Launch attempt $($launchAttempt + 1) failed: $($_.Exception.Message)"
+                        Start-Sleep -Milliseconds 500
+                    }}
+                }}
+
+                if ($started) {{
+                    if (Test-Path -LiteralPath $updateDest) {{
+                        Remove-Item -LiteralPath $updateDest -Force -ErrorAction SilentlyContinue
+                        Write-UpdateLog "Removed staged update exe"
+                    }}
+                }} else {{
+                    # Fallback: launch the staged update directly and keep it in place.
+                    Write-UpdateLog "Replaced exe failed to stay running; launching staged fallback exe"
+                    Start-Process -FilePath $updateDest
                 }}
             }} else {{
                 # Fallback: launch the staged update directly if in-place replacement fails.
+                Write-UpdateLog "Replacement copy failed after retries; launching staged fallback exe"
                 Start-Process -FilePath $updateDest
             }}
+        }} catch {{
+            Write-UpdateLog "Updater script fatal error: $($_.Exception.Message)"
         }} finally {{
             Start-Sleep -Milliseconds 250
             Remove-Item -LiteralPath $scriptPath -Force -ErrorAction SilentlyContinue
@@ -221,8 +284,10 @@ def download_and_apply_update(release: dict, progress_cb=None) -> None:
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 close_fds=True,
             )
+            _append_update_log(f"Spawned updater script via {shell}: {script_path}")
             return
         except FileNotFoundError:
             continue
 
+    _append_update_log("Failed to spawn updater script: no PowerShell executable found")
     raise RuntimeError("Could not start PowerShell to apply update.")
