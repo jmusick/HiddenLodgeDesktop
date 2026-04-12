@@ -69,6 +69,17 @@ def _lua_number_table(data: dict[str, int | float], depth: int) -> str:
     return ("\n" + tab).join(lines)
 
 
+def _lua_nested_number_table(data: dict[str, dict[str, int | float]], depth: int) -> str:
+    """Render a nested {key -> {sub_key -> number}} mapping as Lua table body."""
+    tab = "\t" * depth
+    inner = "\t" * (depth + 1)
+    lines = ["{"]
+    for key in sorted(data):
+        lines.append(f'{inner}["{_lua_escape(key)}"] = {_lua_number_table(data[key], depth + 1)},')
+    lines.append(tab + "}")
+    return ("\n" + tab).join(lines)
+
+
 def _preparedness_block(by_full: dict[str, str], by_name: dict[str, str], synced_at: int) -> str:
     """Return the complete Lua snippet for the preparedness key at depth-1 indent."""
     tab = "\t"
@@ -167,6 +178,34 @@ def _raid_signup_block(
         f'{tab}\t\t["schemaVersion"] = 1,\n'
         f'{tab}\t\t["raidName"] = "{_lua_escape(raid_name)}",\n'
         f'{tab}\t\t["raidStartUtc"] = {int(raid_start_utc)},\n'
+        f'{tab}\t}},\n'
+        f'{tab}}}'
+    )
+
+
+def _droptimizer_block(
+    by_item_by_full_delta: dict[str, dict[str, float]],
+    by_item_by_name_delta: dict[str, dict[str, float]],
+    by_item_by_full_pct: dict[str, dict[str, float]],
+    by_item_by_name_pct: dict[str, dict[str, float]],
+    entries: int,
+    items: int,
+    synced_at: int,
+) -> str:
+    """Return the complete Lua snippet for per-item droptimizer upgrade data."""
+    tab = "\t"
+    return (
+        f'{tab}["droptimizer"] = {{\n'
+        f'{tab}\t["byItemByFullDelta"] = {_lua_nested_number_table(by_item_by_full_delta, depth=2)},\n'
+        f'{tab}\t["byItemByNameDelta"] = {_lua_nested_number_table(by_item_by_name_delta, depth=2)},\n'
+        f'{tab}\t["byItemByFullPct"] = {_lua_nested_number_table(by_item_by_full_pct, depth=2)},\n'
+        f'{tab}\t["byItemByNamePct"] = {_lua_nested_number_table(by_item_by_name_pct, depth=2)},\n'
+        f'{tab}\t["sync"] = {{\n'
+        f'{tab}\t\t["source"] = "HiddenLodgeDesktop",\n'
+        f'{tab}\t\t["syncedAt"] = {synced_at},\n'
+        f'{tab}\t\t["entries"] = {int(entries)},\n'
+        f'{tab}\t\t["items"] = {int(items)},\n'
+        f'{tab}\t\t["schemaVersion"] = 1,\n'
         f'{tab}\t}},\n'
         f'{tab}}}'
     )
@@ -320,5 +359,35 @@ def update_raid_signup(
         text = "HiddenLodgeDB = {\n}\n"
 
     text = _upsert_top_level_block(text, "raidSignup", new_block)
+
+    path.write_text(text, encoding="utf-8")
+
+
+def update_droptimizer_scores(
+    path: pathlib.Path,
+    by_item_by_full_delta: dict[str, dict[str, float]],
+    by_item_by_name_delta: dict[str, dict[str, float]],
+    by_item_by_full_pct: dict[str, dict[str, float]],
+    by_item_by_name_pct: dict[str, dict[str, float]],
+    entries: int,
+    items: int,
+) -> None:
+    """Update (or insert) the droptimizer section in HiddenLodgeDB SavedVariables."""
+    new_block = _droptimizer_block(
+        by_item_by_full_delta=by_item_by_full_delta,
+        by_item_by_name_delta=by_item_by_name_delta,
+        by_item_by_full_pct=by_item_by_full_pct,
+        by_item_by_name_pct=by_item_by_name_pct,
+        entries=entries,
+        items=items,
+        synced_at=int(time.time()),
+    )
+
+    if path.exists():
+        text = path.read_text(encoding="utf-8")
+    else:
+        text = "HiddenLodgeDB = {\n}\n"
+
+    text = _upsert_top_level_block(text, "droptimizer", new_block)
 
     path.write_text(text, encoding="utf-8")
