@@ -9,6 +9,7 @@ import queue
 import subprocess
 import sys
 import threading
+from datetime import datetime
 import tkinter as tk
 from tkinter import filedialog, scrolledtext, ttk
 
@@ -21,6 +22,7 @@ from bridge import droptimizer_sync as droptimizer_bridge
 from bridge import updater as updater_bridge
 
 APP_NAME = "HiddenLodge Desktop Bridge"
+APP_ICON_FILE = "icon.ico"
 ADDON_SAVEDVARS_NAME = "HiddenLodge.lua"
 AUTO_SYNC_SECONDS = 6 * 60 * 60
 VERSION = updater_bridge.get_current_version()
@@ -28,6 +30,8 @@ VERSION = updater_bridge.get_current_version()
 BG_APP = "#081321"
 BG_PANEL = "#0d1f34"
 BG_PANEL_SOFT = "#112640"
+BG_BANNER = "#153253"
+BG_BANNER_EDGE = "#3b6188"
 BG_INPUT = "#06111d"
 ACCENT_GOLD = "#d4b26a"
 ACCENT_CYAN = "#8ec7dd"
@@ -35,6 +39,16 @@ TEXT_PRIMARY = "#eaf4ff"
 TEXT_MUTED = "#8ca8c0"
 SUCCESS = "#66d69f"
 ERROR = "#f18f86"
+ENV_TOGGLE_BG = "#0b1b2d"
+ENV_TOGGLE_BG_ACTIVE = "#1d3a57"
+ENV_TOGGLE_BG_HOVER = "#152b43"
+ENV_TOGGLE_BORDER = "#365c7e"
+ENV_TOGGLE_TEXT_ACTIVE = "#ffe9ba"
+ENV_TOGGLE_HEIGHT = 30
+ENV_TOGGLE_PROD_WIDTH = 72
+ENV_TOGGLE_LOCAL_WIDTH = 104
+ENV_TOGGLE_RADIUS = 15
+ENV_TOGGLE_OUTER_BORDER_WIDTH = 2
 
 
 class SetupDialog(tk.Toplevel):
@@ -176,26 +190,54 @@ class App(tk.Tk):
         self._update_available_release: dict | None = None
         self._latest_release_version = "Checking..."
 
+        self._apply_window_icon()
         self._apply_theme()
         self._build_ui()
+        self._center_on_screen()
         self._load_config()
         self._start_auto_sync()
         self._poll_log()
         threading.Thread(target=self._check_for_update_bg, daemon=True).start()
+
+    def _resolve_asset_path(self, filename: str) -> pathlib.Path:
+        if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+            return pathlib.Path(getattr(sys, "_MEIPASS")) / filename
+        return pathlib.Path(__file__).resolve().parent / filename
+
+    def _apply_window_icon(self) -> None:
+        icon_path = self._resolve_asset_path(APP_ICON_FILE)
+        if not icon_path.exists():
+            return
+        try:
+            self.iconbitmap(default=str(icon_path))
+        except Exception:
+            # Some environments can reject icon assignment; keep startup resilient.
+            pass
+
+    def _center_on_screen(self) -> None:
+        self.update_idletasks()
+        width = self.winfo_width()
+        height = self.winfo_height()
+        x = max((self.winfo_screenwidth() - width) // 2, 0)
+        y = max((self.winfo_screenheight() - height) // 2, 0)
+        self.geometry(f"{width}x{height}+{x}+{y}")
 
     def _apply_theme(self) -> None:
         style = ttk.Style(self)
         style.theme_use("clam")
 
         style.configure("HL.TFrame", background=BG_APP)
-        style.configure("HL.Card.TFrame", background=BG_PANEL)
-        style.configure("HL.Banner.TFrame", background=BG_PANEL_SOFT)
+        style.configure("HL.Card.TFrame", background=BG_PANEL, relief="solid", borderwidth=1, bordercolor="#1f3a58")
+        style.configure("HL.CardInner.TFrame", background=BG_PANEL)
+        style.configure("HL.Banner.TFrame", background=BG_BANNER, relief="solid", borderwidth=1, bordercolor=BG_BANNER_EDGE)
 
         style.configure("HL.TLabel", background=BG_APP, foreground=TEXT_PRIMARY, font=("Segoe UI", 10))
-        style.configure("HL.Title.TLabel", background=BG_PANEL_SOFT, foreground=ACCENT_GOLD, font=("Segoe UI Semibold", 16))
-        style.configure("HL.Subtitle.TLabel", background=BG_PANEL_SOFT, foreground=ACCENT_CYAN, font=("Segoe UI", 9))
+        style.configure("HL.Title.TLabel", background=BG_BANNER, foreground="#e3c47f", font=("Segoe UI Semibold", 17))
+        style.configure("HL.Subtitle.TLabel", background=BG_BANNER, foreground="#9cd4ea", font=("Segoe UI Semibold", 9))
         style.configure("HL.Muted.TLabel", background=BG_PANEL, foreground=TEXT_MUTED, font=("Segoe UI", 9))
-        style.configure("HL.StatusValue.TLabel", background=BG_APP, foreground=ACCENT_CYAN, font=("Segoe UI Semibold", 10))
+        style.configure("HL.StatusValue.TLabel", background=BG_PANEL, foreground=ACCENT_CYAN, font=("Segoe UI Semibold", 10))
+        style.configure("HL.Card.TLabel", background=BG_PANEL, foreground=TEXT_PRIMARY, font=("Segoe UI", 10))
+        style.configure("HL.CardMuted.TLabel", background=BG_PANEL, foreground=TEXT_MUTED, font=("Segoe UI", 9))
 
         style.configure("HL.TLabelframe", background=BG_PANEL, bordercolor="#244060", relief="solid")
         style.configure("HL.TLabelframe.Label", background=BG_PANEL, foreground=ACCENT_GOLD, font=("Segoe UI Semibold", 10))
@@ -239,63 +281,65 @@ class App(tk.Tk):
 
     def _build_ui(self) -> None:
         pad = {"padx": 10, "pady": 5}
+        compact_pad = {"padx": 10, "pady": 3}
 
         banner = ttk.Frame(self, style="HL.Banner.TFrame")
         banner.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 6))
-        ttk.Label(banner, text="The Hidden Lodge", style="HL.Title.TLabel").grid(row=0, column=0, sticky="w", padx=12, pady=(10, 0))
+        ttk.Label(banner, text="The Hidden Lodge", style="HL.Title.TLabel").grid(row=0, column=0, sticky="w", padx=12, pady=(8, 0))
         ttk.Label(
             banner,
             text="Desktop Bridge for Guild Data Sync",
             style="HL.Subtitle.TLabel",
-        ).grid(row=1, column=0, sticky="w", padx=12, pady=(0, 10))
+        ).grid(row=1, column=0, sticky="w", padx=12, pady=(1, 8))
 
-        status_frame = ttk.Frame(self, style="HL.TFrame")
-        status_frame.grid(row=1, column=0, sticky="ew", **pad)
+        status_frame = ttk.Frame(self, style="HL.Card.TFrame")
+        status_frame.grid(row=1, column=0, sticky="ew", **compact_pad)
         status_frame.columnconfigure(1, weight=1)
 
         self._status_var = tk.StringVar(value="Auto-sync pending")
         self._current_version_var = tk.StringVar(value=f"v{VERSION}")
         self._latest_version_var = tk.StringVar(value=self._latest_release_version)
-        ttk.Label(status_frame, text="Status:", style="HL.TLabel").pack(side="left")
+        ttk.Label(status_frame, text="Status:", style="HL.Card.TLabel").pack(side="left", padx=(8, 0), pady=4)
         ttk.Label(status_frame, textvariable=self._status_var, style="HL.StatusValue.TLabel").pack(side="left", padx=6)
 
-        version_frame = ttk.Frame(status_frame, style="HL.TFrame")
-        version_frame.pack(side="right")
-        ttk.Label(version_frame, text="Installed:", style="HL.TLabel").pack(side="left")
+        version_frame = ttk.Frame(status_frame, style="HL.CardInner.TFrame")
+        version_frame.pack(side="right", padx=8, pady=4)
+        ttk.Label(version_frame, text="Installed:", style="HL.Card.TLabel").pack(side="left")
         ttk.Label(version_frame, textvariable=self._current_version_var, style="HL.StatusValue.TLabel").pack(side="left", padx=(6, 12))
-        ttk.Label(version_frame, text="Latest:", style="HL.TLabel").pack(side="left")
+        ttk.Label(version_frame, text="Latest:", style="HL.Card.TLabel").pack(side="left")
         ttk.Label(version_frame, textvariable=self._latest_version_var, style="HL.StatusValue.TLabel").pack(side="left", padx=(6, 0))
 
-        auto_row = ttk.Frame(self, style="HL.TFrame")
-        auto_row.grid(row=2, column=0, sticky="ew", **pad)
+        auto_row = ttk.Frame(self, style="HL.Card.TFrame")
+        auto_row.grid(row=2, column=0, sticky="ew", **compact_pad)
         ttk.Label(
             auto_row,
             text="Auto-sync runs on launch and every 6 hours while open.",
-            style="HL.Muted.TLabel",
-        ).pack(side="left")
+            style="HL.CardMuted.TLabel",
+        ).pack(side="left", padx=8, pady=3)
 
-        env_row = ttk.Frame(self, style="HL.TFrame")
-        env_row.grid(row=3, column=0, sticky="ew", **pad)
-        ttk.Label(env_row, text="Environment:", style="HL.TLabel").pack(side="left")
+        env_row = ttk.Frame(self, style="HL.Card.TFrame")
+        env_row.grid(row=3, column=0, sticky="ew", **compact_pad)
+        ttk.Label(env_row, text="Environment:", style="HL.Card.TLabel").pack(side="left", padx=(8, 0), pady=4)
         self._environment_var = tk.StringVar(value="prod")
-        self._env_prod_radio = ttk.Radiobutton(
+        self._env_toggle_hover_segment: str | None = None
+        self._env_toggle_total_width = ENV_TOGGLE_PROD_WIDTH + ENV_TOGGLE_LOCAL_WIDTH
+        self._env_toggle_canvas = tk.Canvas(
             env_row,
-            text="Prod",
-            value="prod",
-            variable=self._environment_var,
-            command=self._on_environment_changed,
+            width=self._env_toggle_total_width,
+            height=ENV_TOGGLE_HEIGHT,
+            bg=BG_PANEL,
+            bd=0,
+            highlightthickness=0,
+            relief="flat",
+            cursor="hand2",
         )
-        self._env_prod_radio.pack(side="left", padx=(8, 2))
-        self._env_local_radio = ttk.Radiobutton(
-            env_row,
-            text="Local Dev",
-            value="local",
-            variable=self._environment_var,
-            command=self._on_environment_changed,
-        )
-        self._env_local_radio.pack(side="left", padx=(4, 12))
+        self._env_toggle_canvas.pack(side="left", padx=(8, 12), pady=2)
+        self._env_toggle_canvas.bind("<Button-1>", self._on_environment_toggle_click)
+        self._env_toggle_canvas.bind("<Motion>", self._on_environment_toggle_motion)
+        self._env_toggle_canvas.bind("<Leave>", self._on_environment_toggle_leave)
+        self._refresh_environment_toggle_styles()
         self._endpoint_var = tk.StringVar(value="")
-        ttk.Label(env_row, textvariable=self._endpoint_var, style="HL.Muted.TLabel").pack(side="left")
+        ttk.Label(env_row, textvariable=self._endpoint_var, style="HL.CardMuted.TLabel").pack(side="left", pady=4)
 
         sep = ttk.Separator(self, orient="horizontal")
         sep.grid(row=4, column=0, sticky="ew", padx=10, pady=3)
@@ -346,8 +390,11 @@ class App(tk.Tk):
         )
         self._update_btn.pack(fill="x", padx=0, pady=2)
 
-        self._log = scrolledtext.ScrolledText(self, width=70, height=20, state="disabled")
-        self._log.grid(row=7, column=0, sticky="nsew", **pad)
+        log_card = ttk.Frame(self, style="HL.Card.TFrame")
+        log_card.grid(row=7, column=0, sticky="nsew", **pad)
+
+        self._log = scrolledtext.ScrolledText(log_card, width=70, height=20, state="disabled")
+        self._log.pack(fill="both", expand=True, padx=6, pady=6)
         self._log.configure(
             bg=BG_INPUT,
             fg=TEXT_PRIMARY,
@@ -371,8 +418,9 @@ class App(tk.Tk):
             self._config = Config.load()
             self._savedvars_var.set(str(self._config.wow_savedvars_path))
             self._environment_var.set(self._config.environment)
+            self._refresh_environment_toggle_styles()
             self._refresh_endpoint_label()
-            self._log_msg(f"Config loaded. Website: {self._config.website_url}")
+            self._log_msg(f"Config loaded\n  Website: {self._config.website_url}")
             self._status_var.set("Auto-sync ready")
         except FileNotFoundError:
             dlg = SetupDialog(self)
@@ -394,6 +442,159 @@ class App(tk.Tk):
             return
         self._endpoint_var.set(f"Endpoint: {self._config.website_url}")
 
+    def _refresh_environment_toggle_styles(self) -> None:
+        selected = self._environment_var.get().strip().lower()
+        self._env_toggle_canvas.delete("all")
+
+        x1 = 1
+        y1 = 1
+        x2 = self._env_toggle_total_width - 1
+        y2 = ENV_TOGGLE_HEIGHT - 1
+        split_x = ENV_TOGGLE_PROD_WIDTH
+
+        self._create_rounded_rect(
+            self._env_toggle_canvas,
+            x1,
+            y1,
+            x2,
+            y2,
+            ENV_TOGGLE_RADIUS,
+            fill=ENV_TOGGLE_BG,
+            outline=ENV_TOGGLE_BORDER,
+            width=ENV_TOGGLE_OUTER_BORDER_WIDTH,
+        )
+
+        hover_prod = self._env_toggle_hover_segment == "prod"
+        hover_local = self._env_toggle_hover_segment == "local"
+
+        if selected == "prod":
+            active_x1 = x1 + 3
+            active_x2 = split_x - 2
+            prod_fg = ENV_TOGGLE_TEXT_ACTIVE
+            local_fg = TEXT_PRIMARY
+            local_bg = ENV_TOGGLE_BG_HOVER if hover_local else ENV_TOGGLE_BG
+            self._create_rounded_rect(
+                self._env_toggle_canvas,
+                split_x,
+                y1 + 2,
+                x2 - 2,
+                y2 - 2,
+                max(ENV_TOGGLE_RADIUS - 2, 6),
+                fill=local_bg,
+                outline="",
+                width=0,
+            )
+        else:
+            active_x1 = split_x + 2
+            active_x2 = x2 - 3
+            prod_fg = TEXT_PRIMARY
+            local_fg = ENV_TOGGLE_TEXT_ACTIVE
+            prod_bg = ENV_TOGGLE_BG_HOVER if hover_prod else ENV_TOGGLE_BG
+            self._create_rounded_rect(
+                self._env_toggle_canvas,
+                x1 + 2,
+                y1 + 2,
+                split_x,
+                y2 - 2,
+                max(ENV_TOGGLE_RADIUS - 2, 6),
+                fill=prod_bg,
+                outline="",
+                width=0,
+            )
+
+        self._create_rounded_rect(
+            self._env_toggle_canvas,
+            active_x1,
+            y1 + 3,
+            active_x2,
+            y2 - 3,
+            max(ENV_TOGGLE_RADIUS - 2, 6),
+            fill=ENV_TOGGLE_BG_ACTIVE,
+            outline="",
+            width=0,
+        )
+
+        self._env_toggle_canvas.create_text(
+            ENV_TOGGLE_PROD_WIDTH // 2,
+            ENV_TOGGLE_HEIGHT // 2,
+            text="Prod",
+            fill=prod_fg,
+            font=("Segoe UI Semibold", 9),
+        )
+        self._env_toggle_canvas.create_text(
+            ENV_TOGGLE_PROD_WIDTH + (ENV_TOGGLE_LOCAL_WIDTH // 2),
+            ENV_TOGGLE_HEIGHT // 2,
+            text="Local Dev",
+            fill=local_fg,
+            font=("Segoe UI Semibold", 9),
+        )
+
+    def _create_rounded_rect(
+        self,
+        canvas: tk.Canvas,
+        x1: int,
+        y1: int,
+        x2: int,
+        y2: int,
+        radius: int,
+        **kwargs,
+    ) -> int:
+        radius = max(1, min(radius, (x2 - x1) // 2, (y2 - y1) // 2))
+        points = [
+            x1 + radius,
+            y1,
+            x2 - radius,
+            y1,
+            x2,
+            y1,
+            x2,
+            y1 + radius,
+            x2,
+            y2 - radius,
+            x2,
+            y2,
+            x2 - radius,
+            y2,
+            x1 + radius,
+            y2,
+            x1,
+            y2,
+            x1,
+            y2 - radius,
+            x1,
+            y1 + radius,
+            x1,
+            y1,
+        ]
+        return canvas.create_polygon(points, smooth=True, splinesteps=20, **kwargs)
+
+    def _on_environment_toggle_click(self, event: tk.Event) -> None:
+        selected = self._segment_from_x(event.x)
+        if selected is None:
+            return
+        if self._environment_var.get() == selected:
+            return
+        self._environment_var.set(selected)
+        self._on_environment_changed()
+
+    def _on_environment_toggle_motion(self, event: tk.Event) -> None:
+        segment = self._segment_from_x(event.x)
+        if segment == self._env_toggle_hover_segment:
+            return
+        self._env_toggle_hover_segment = segment
+        self._refresh_environment_toggle_styles()
+
+    def _on_environment_toggle_leave(self, _event: tk.Event) -> None:
+        if self._env_toggle_hover_segment is None:
+            return
+        self._env_toggle_hover_segment = None
+        self._refresh_environment_toggle_styles()
+
+    def _segment_from_x(self, x: int) -> str | None:
+        if x < 0 or x > self._env_toggle_total_width:
+            return None
+        return "prod" if x < ENV_TOGGLE_PROD_WIDTH else "local"
+
     def _on_environment_changed(self) -> None:
         if not self._config:
             return
@@ -402,6 +603,8 @@ class App(tk.Tk):
         if selected not in {"prod", "local"}:
             return
 
+        self._refresh_environment_toggle_styles()
+
         if self._config.environment == selected:
             return
 
@@ -409,7 +612,7 @@ class App(tk.Tk):
         self._config.save()
         self._refresh_endpoint_label()
         label = "Local Dev" if selected == "local" else "Prod"
-        self._log_msg(f"Environment switched to {label}. Using {self._config.website_url}")
+        self._log_msg(f"Environment switched\n  Mode: {label}\n  Endpoint: {self._config.website_url}")
 
     def _schedule_next_sync(self) -> None:
         if self._auto_sync_job is not None:
@@ -455,7 +658,7 @@ class App(tk.Tk):
         self._config.wow_savedvars_path = savedvars_path
         self._savedvars_var.set(str(savedvars_path))
         self._config.save()
-        self._log_msg(f"SavedVariables path updated: {savedvars_path}")
+        self._log_msg(f"SavedVariables path updated\n  Path: {savedvars_path}")
 
     def _discover_savedvars_path(self, wtf_dir: pathlib.Path) -> pathlib.Path | None:
         account_dir = wtf_dir / "Account"
@@ -512,15 +715,19 @@ class App(tk.Tk):
             loot_history_count = loot_history_bridge.sync(self._config)
             signup_target = signup_raid_name or "No raid scheduled today"
             self._log_msg(
-                "Data sync complete — "
-                f"preparedness: {prep_count}, great-vault score: {vault_score_count}, attendance: {attendance_score_count}, alt-note sync: {note_count}, "
-                f"raid signups: {signup_count} ({signup_target}), droptimizer upgrades: {droptimizer_entry_count} entries across {droptimizer_item_count} items, "
-                f"loot history: {loot_history_count}. "
-                "Relaunch WoW to load the updated data."
+                "Data sync complete\n"
+                f"  Preparedness: {prep_count}\n"
+                f"  Great Vault score: {vault_score_count}\n"
+                f"  Attendance: {attendance_score_count}\n"
+                f"  Alt-note sync: {note_count}\n"
+                f"  Raid signups: {signup_count} ({signup_target})\n"
+                f"  Droptimizer upgrades: {droptimizer_entry_count} entries across {droptimizer_item_count} items\n"
+                f"  Loot history: {loot_history_count}\n"
+                "  Next step: Relaunch WoW to load the updated data."
             )
             self.after(0, lambda: self._status_var.set("Sync complete"))
         except Exception as exc:  # noqa: BLE001
-            self._log_msg(f"Data sync error: {exc}")
+            self._log_msg(f"Data sync error\n  Details: {exc}")
             self.after(0, lambda: self._status_var.set("Sync error"))
         finally:
             self._sync_in_progress = False
@@ -532,13 +739,21 @@ class App(tk.Tk):
     # ------------------------------------------------------------------
 
     def _log_msg(self, msg: str) -> None:
-        self._log_queue.put(msg)
+        clean = msg.strip()
+        if not clean:
+            return
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        lines = clean.splitlines()
+        lines[0] = f"[{timestamp}] {lines[0]}"
+        self._log_queue.put("\n".join(lines))
 
     def _poll_log(self) -> None:
         try:
             while True:
                 msg = self._log_queue.get_nowait()
                 self._log.config(state="normal")
+                if self._log.index("end-1c") != "1.0":
+                    self._log.insert("end", "\n")
                 self._log.insert("end", msg + "\n")
                 self._log.see("end")
                 self._log.config(state="disabled")
