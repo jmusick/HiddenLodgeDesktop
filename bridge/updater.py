@@ -223,6 +223,20 @@ def download_and_apply_update(release: dict, progress_cb=None) -> None:
                 Set-Content -LiteralPath $installedVersionFile -Value $releaseVersion -NoNewline -Encoding UTF8
                 Write-UpdateLog "Installed version file updated to $releaseVersion"
 
+                # Attempt to add a Defender process exclusion for the replaced exe so that
+                # PyInstaller's runtime DLL extraction is not quarantined on relaunch.
+                # Requires admin; silently skipped on standard-user accounts.
+                try {{
+                    Add-MpPreference -ExclusionProcess $currentExe -ErrorAction Stop
+                    Write-UpdateLog "Added Defender process exclusion for $currentExe"
+                }} catch {{
+                    Write-UpdateLog "Skipped Defender exclusion (admin required or Defender inactive)"
+                }}
+
+                # Brief pause after copy to let Defender complete its scan of the new binary
+                # before we run it; deep/predictive scanning may pre-clear the embedded DLLs.
+                Start-Sleep -Seconds 5
+
                 # Poll for the app window title rather than a fixed sleep + HasExited.
                 # A PyInstaller onefile exe may show a transient error dialog (e.g. "Failed
                 # to load Python DLL") while AV scans freshly extracted files; that keeps the
