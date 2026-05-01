@@ -309,7 +309,8 @@ class App(tk.Tk):
         ttk.Label(version_frame, text="Installed:", style="HL.Card.TLabel").pack(side="left")
         ttk.Label(version_frame, textvariable=self._current_version_var, style="HL.StatusValue.TLabel").pack(side="left", padx=(6, 12))
         ttk.Label(version_frame, text="Latest:", style="HL.Card.TLabel").pack(side="left")
-        ttk.Label(version_frame, textvariable=self._latest_version_var, style="HL.StatusValue.TLabel").pack(side="left", padx=(6, 0))
+        ttk.Label(version_frame, textvariable=self._latest_version_var, style="HL.StatusValue.TLabel").pack(side="left", padx=(6, 8))
+        ttk.Button(version_frame, text="Check", command=self._check_for_update, style="HL.Secondary.TButton").pack(side="left")
 
         auto_row = ttk.Frame(self, style="HL.Card.TFrame")
         auto_row.grid(row=2, column=0, sticky="ew", **compact_pad)
@@ -773,6 +774,10 @@ class App(tk.Tk):
     # Auto-update
     # ------------------------------------------------------------------
 
+    def _check_for_update(self) -> None:
+        self._latest_version_var.set("Checking…")
+        threading.Thread(target=self._check_for_update_bg, daemon=True).start()
+
     def _check_for_update_bg(self) -> None:
         try:
             release = updater_bridge.check_for_update(VERSION)
@@ -780,8 +785,9 @@ class App(tk.Tk):
             self.after(0, lambda: self._latest_version_var.set(latest_version))
             if release:
                 self.after(0, lambda: self._on_update_available(release))
-        except Exception:
+        except Exception as exc:
             self.after(0, lambda: self._latest_version_var.set("Unavailable"))
+            self.after(0, lambda: self._log_msg(f"Update check failed: {exc}"))
 
     def _on_update_available(self, release: dict) -> None:
         tag = release.get("tag_name", "?")
