@@ -223,20 +223,35 @@ def download_and_apply_update(release: dict, progress_cb=None) -> None:
                 Set-Content -LiteralPath $installedVersionFile -Value $releaseVersion -NoNewline -Encoding UTF8
                 Write-UpdateLog "Installed version file updated to $releaseVersion"
 
-                # One-file PyInstaller launches can fail transiently while AV scanners
-                # inspect the freshly replaced binary; retry before falling back.
-                # 8 s window: extraction of a ~14 MB onefile exe + AV scan + Python startup
-                # can easily exceed 1-2 s on first run or after an AV rescan.
+                # Poll for the app window title rather than a fixed sleep + HasExited.
+                # A PyInstaller onefile exe may show a transient error dialog (e.g. "Failed
+                # to load Python DLL") while AV scans freshly extracted files; that keeps the
+                # process alive without the real app window appearing, producing a false-positive
+                # with the old approach. Window-title polling correctly distinguishes success from
+                # a stuck error dialog and kills stuck processes before retrying.
+                $appTitle = 'HiddenLodge Desktop Bridge'
                 $started = $false
-                for ($launchAttempt = 0; $launchAttempt -lt 5 -and -not $started; $launchAttempt += 1) {{
+                for ($launchAttempt = 0; $launchAttempt -lt 3 -and -not $started; $launchAttempt += 1) {{
                     try {{
                         $proc = Start-Process -FilePath $currentExe -PassThru
-                        Start-Sleep -Milliseconds 8000
-                        if ($proc -and -not $proc.HasExited) {{
-                            $started = $true
-                            Write-UpdateLog "Launch succeeded for replaced exe on attempt $($launchAttempt + 1); pid=$($proc.Id)"
-                        }} else {{
-                            Write-UpdateLog "Launch attempt $($launchAttempt + 1) exited immediately"
+                        Write-UpdateLog "Launch attempt $($launchAttempt + 1): pid=$($proc.Id)"
+                        $deadline = (Get-Date).AddSeconds(20)
+                        while ((Get-Date) -lt $deadline -and -not $started) {{
+                            Start-Sleep -Milliseconds 500
+                            if ($proc.HasExited) {{
+                                Write-UpdateLog "Launch attempt $($launchAttempt + 1): process exited (code $($proc.ExitCode))"
+                                break
+                            }}
+                            $p = Get-Process -Id $proc.Id -ErrorAction SilentlyContinue
+                            if ($p -and $p.MainWindowTitle -eq $appTitle) {{
+                                $started = $true
+                                Write-UpdateLog "Launch attempt $($launchAttempt + 1): app window detected; pid=$($proc.Id)"
+                            }}
+                        }}
+                        if (-not $started -and ($proc -and -not $proc.HasExited)) {{
+                            Write-UpdateLog "Launch attempt $($launchAttempt + 1): no app window after 20 s; killing stuck process"
+                            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+                            Start-Sleep -Milliseconds 2000
                         }}
                     }} catch {{
                         Write-UpdateLog "Launch attempt $($launchAttempt + 1) failed: $($_.Exception.Message)"

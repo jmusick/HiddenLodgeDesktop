@@ -239,6 +239,7 @@ class App(tk.Tk):
         style.configure("HL.StatusValue.TLabel", background=BG_PANEL, foreground=ACCENT_CYAN, font=("Segoe UI Semibold", 10))
         style.configure("HL.Card.TLabel", background=BG_PANEL, foreground=TEXT_PRIMARY, font=("Segoe UI", 10))
         style.configure("HL.CardMuted.TLabel", background=BG_PANEL, foreground=TEXT_MUTED, font=("Segoe UI", 9))
+        style.configure("HL.UpdateMsg.TLabel", background=BG_PANEL, foreground=ACCENT_GOLD, font=("Segoe UI Semibold", 9))
 
         style.configure("HL.TLabelframe", background=BG_PANEL, bordercolor="#244060", relief="solid")
         style.configure("HL.TLabelframe.Label", background=BG_PANEL, foreground=ACCENT_GOLD, font=("Segoe UI Semibold", 10))
@@ -381,15 +382,21 @@ class App(tk.Tk):
             justify="left",
         ).grid(row=0, column=1, sticky="w", padx=(10, 0))
 
-        # Update notification bar — hidden until an update is found
-        self._update_frame = ttk.Frame(self, style="HL.TFrame")
-        self._update_btn = ttk.Button(
+        # Update notification row — hidden until an update is found; gridded at row=6
+        self._update_frame = ttk.Frame(self, style="HL.Card.TFrame")
+        self._update_msg_label = ttk.Label(
             self._update_frame,
             text="",
+            style="HL.UpdateMsg.TLabel",
+        )
+        self._update_msg_label.pack(side="left", padx=(8, 0), pady=4)
+        self._update_btn = ttk.Button(
+            self._update_frame,
+            text="  Install Update  ",
             command=self._install_update,
             style="HL.Primary.TButton",
         )
-        self._update_btn.pack(fill="x", padx=0, pady=2)
+        self._update_btn.pack(side="right", padx=(0, 8), pady=4)
 
         log_card = ttk.Frame(self, style="HL.Card.TFrame")
         log_card.grid(row=7, column=0, sticky="nsew", **pad)
@@ -780,9 +787,10 @@ class App(tk.Tk):
         tag = release.get("tag_name", "?")
         self._update_available_release = release
         self._latest_version_var.set(updater_bridge.get_release_version(release))
-        self._update_btn.config(text=f"  Update Available — installed v{VERSION}, latest {tag}  \u2014  Click to download and install  ")
-        self._update_frame.grid(row=5, column=0, sticky="ew", padx=10, pady=(0, 2))
-        self._log_msg(f"Update available: installed v{VERSION}, latest {tag}. Click the update bar to install.")
+        self._update_msg_label.config(text=f"Update available: v{VERSION} → {tag}")
+        self._update_btn.config(state="normal", text="  Install Update  ")
+        self._update_frame.grid(row=6, column=0, sticky="ew", padx=10, pady=(0, 2))
+        self._log_msg(f"Update available: installed v{VERSION}, latest {tag}. Click to install.")
 
     def _install_update(self) -> None:
         if not self._update_available_release:
@@ -802,7 +810,7 @@ class App(tk.Tk):
                 self.after(1500, self._shutdown_for_update)
             except Exception as exc:  # noqa: BLE001
                 self.after(0, lambda: self._log_msg(f"Update failed: {exc}"))
-                self.after(0, lambda: self._update_btn.config(state="normal", text=f"  Retry update — {tag}  "))
+                self.after(0, lambda: self._update_btn.config(state="normal", text="  Retry Update  "))
 
         threading.Thread(target=_do_update, daemon=True).start()
 
