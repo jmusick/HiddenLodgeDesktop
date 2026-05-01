@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 import queue
 import subprocess
@@ -807,10 +808,12 @@ class App(tk.Tk):
 
     def _shutdown_for_update(self) -> None:
         # Force process termination after UI teardown so the updater script can replace the exe.
+        # os._exit bypasses Python's cleanup machinery and guarantees the process terminates,
+        # which is critical — tkinter's after-callback dispatcher can swallow SystemExit.
         try:
             self.destroy()
         finally:
-            raise SystemExit(0)
+            os._exit(0)
 
     # ------------------------------------------------------------------
     # Cleanup

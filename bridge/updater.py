@@ -225,11 +225,13 @@ def download_and_apply_update(release: dict, progress_cb=None) -> None:
 
                 # One-file PyInstaller launches can fail transiently while AV scanners
                 # inspect the freshly replaced binary; retry before falling back.
+                # 8 s window: extraction of a ~14 MB onefile exe + AV scan + Python startup
+                # can easily exceed 1-2 s on first run or after an AV rescan.
                 $started = $false
-                for ($launchAttempt = 0; $launchAttempt -lt 3 -and -not $started; $launchAttempt += 1) {{
+                for ($launchAttempt = 0; $launchAttempt -lt 5 -and -not $started; $launchAttempt += 1) {{
                     try {{
                         $proc = Start-Process -FilePath $currentExe -PassThru
-                        Start-Sleep -Milliseconds 1200
+                        Start-Sleep -Milliseconds 8000
                         if ($proc -and -not $proc.HasExited) {{
                             $started = $true
                             Write-UpdateLog "Launch succeeded for replaced exe on attempt $($launchAttempt + 1); pid=$($proc.Id)"
@@ -238,7 +240,7 @@ def download_and_apply_update(release: dict, progress_cb=None) -> None:
                         }}
                     }} catch {{
                         Write-UpdateLog "Launch attempt $($launchAttempt + 1) failed: $($_.Exception.Message)"
-                        Start-Sleep -Milliseconds 500
+                        Start-Sleep -Milliseconds 2000
                     }}
                 }}
 
