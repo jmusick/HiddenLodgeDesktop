@@ -37,6 +37,61 @@ class Config:
         self.wow_savedvars_path: pathlib.Path = pathlib.Path(data["wow_savedvars_path"])
         self.poll_interval_seconds: int = int(data.get("poll_interval_seconds", 21600))
 
+        self.api_connect_timeout_seconds: float = self._safe_float(
+            data.get("api_connect_timeout_seconds", 10),
+            default=10.0,
+            minimum=1.0,
+            maximum=120.0,
+        )
+        self.api_read_timeout_seconds: float = self._safe_float(
+            data.get("api_read_timeout_seconds", 45),
+            default=45.0,
+            minimum=2.0,
+            maximum=300.0,
+        )
+        self.api_write_timeout_seconds: float = self._safe_float(
+            data.get("api_write_timeout_seconds", 30),
+            default=30.0,
+            minimum=2.0,
+            maximum=300.0,
+        )
+        self.api_request_retries: int = self._safe_int(
+            data.get("api_request_retries", 2),
+            default=2,
+            minimum=0,
+            maximum=8,
+        )
+        self.api_retry_backoff_seconds: float = self._safe_float(
+            data.get("api_retry_backoff_seconds", 1.5),
+            default=1.5,
+            minimum=0.1,
+            maximum=10.0,
+        )
+
+    @staticmethod
+    def _safe_float(value: object, *, default: float, minimum: float, maximum: float) -> float:
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            return default
+        if parsed < minimum:
+            return minimum
+        if parsed > maximum:
+            return maximum
+        return parsed
+
+    @staticmethod
+    def _safe_int(value: object, *, default: int, minimum: int, maximum: int) -> int:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return default
+        if parsed < minimum:
+            return minimum
+        if parsed > maximum:
+            return maximum
+        return parsed
+
     @property
     def website_url(self) -> str:
         return self.website_url_local if self.environment == "local" else self.website_url_prod
@@ -76,6 +131,11 @@ class Config:
             "api_key": self.api_key,
             "wow_savedvars_path": str(self.wow_savedvars_path),
             "poll_interval_seconds": self.poll_interval_seconds,
+            "api_connect_timeout_seconds": self.api_connect_timeout_seconds,
+            "api_read_timeout_seconds": self.api_read_timeout_seconds,
+            "api_write_timeout_seconds": self.api_write_timeout_seconds,
+            "api_request_retries": self.api_request_retries,
+            "api_retry_backoff_seconds": self.api_retry_backoff_seconds,
         }
 
     def save(self) -> None:

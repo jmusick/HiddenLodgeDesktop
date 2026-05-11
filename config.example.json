@@ -7,5 +7,10 @@
     "website_url": "https://hiddenlodge.example.com",
     "api_key": "YOUR_DESKTOP_API_KEY_HERE",
     "wow_savedvars_path": "C:\\Program Files (x86)\\World of Warcraft\\_retail_\\WTF\\Account\\YOUR_ACCOUNT\\SavedVariables\\HiddenLodge.lua",
-    "poll_interval_seconds": 21600
+    "poll_interval_seconds": 21600,
+    "api_connect_timeout_seconds": 10,
+    "api_read_timeout_seconds": 45,
+    "api_write_timeout_seconds": 30,
+    "api_request_retries": 2,
+    "api_retry_backoff_seconds": 1.5
 }

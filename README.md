@@ -59,6 +59,11 @@ Fields:
 - `api_key`: Desktop key used for API authentication.
 - `wow_savedvars_path`: Full path to `HiddenLodge.lua` in your WoW `SavedVariables` directory.
 - `poll_interval_seconds`: Saved for compatibility in config files; the desktop app currently auto-syncs on launch and every 6 hours while open.
+- `api_connect_timeout_seconds`: Timeout (seconds) for opening a connection to the website API.
+- `api_read_timeout_seconds`: Timeout (seconds) for waiting on API response body reads.
+- `api_write_timeout_seconds`: Timeout (seconds) for sending API request bodies.
+- `api_request_retries`: Number of retries for transient network/request failures.
+- `api_retry_backoff_seconds`: Base delay between retries. Each retry waits longer than the previous one.
 
 ## Build Standalone EXE
 
