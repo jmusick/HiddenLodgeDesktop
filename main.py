@@ -4,12 +4,12 @@
 from __future__ import annotations
 
 import json
-import os
 import pathlib
 import queue
 import subprocess
 import sys
 import threading
+import webbrowser
 from datetime import datetime
 import tkinter as tk
 from tkinter import filedialog, scrolledtext, ttk
@@ -393,8 +393,8 @@ class App(tk.Tk):
         self._update_msg_label.pack(side="left", padx=(8, 0), pady=4)
         self._update_btn = ttk.Button(
             self._update_frame,
-            text="  Install Update  ",
-            command=self._install_update,
+            text="  Open Releases  ",
+            command=self._open_releases_page,
             style="HL.Primary.TButton",
         )
         self._update_btn.pack(side="right", padx=(0, 8), pady=4)
@@ -794,40 +794,28 @@ class App(tk.Tk):
         self._update_available_release = release
         self._latest_version_var.set(updater_bridge.get_release_version(release))
         self._update_msg_label.config(text=f"Update available: v{VERSION} → {tag}")
-        self._update_btn.config(state="normal", text="  Install Update  ")
+        self._update_btn.config(state="normal", text="  Open Releases  ")
         self._update_frame.grid(row=6, column=0, sticky="ew", padx=10, pady=(0, 2))
-        self._log_msg(f"Update available: installed v{VERSION}, latest {tag}. Click to install.")
+        self._log_msg(
+            f"Update available: installed v{VERSION}, latest {tag}. "
+            "Click Open Releases to download the latest version."
+        )
 
-    def _install_update(self) -> None:
-        if not self._update_available_release:
-            return
-        if not getattr(sys, "frozen", False):
-            self._log_msg("Auto-update is only available in the packaged exe. Update via: git pull")
-            return
-
-        release = self._update_available_release
-        tag = release.get("tag_name", "?")
-        self._update_btn.config(state="disabled", text=f"  Downloading {tag}\u2026  ")
-
-        def _do_update() -> None:
-            try:
-                updater_bridge.download_and_apply_update(release)
-                self.after(0, lambda: self._log_msg("Download complete. Closing app — it will relaunch automatically."))
-                self.after(1500, self._shutdown_for_update)
-            except Exception as exc:  # noqa: BLE001
-                self.after(0, lambda: self._log_msg(f"Update failed: {exc}"))
-                self.after(0, lambda: self._update_btn.config(state="normal", text="  Retry Update  "))
-
-        threading.Thread(target=_do_update, daemon=True).start()
-
-    def _shutdown_for_update(self) -> None:
-        # Force process termination after UI teardown so the updater script can replace the exe.
-        # os._exit bypasses Python's cleanup machinery and guarantees the process terminates,
-        # which is critical — tkinter's after-callback dispatcher can swallow SystemExit.
+    def _open_releases_page(self) -> None:
         try:
-            self.destroy()
-        finally:
-            os._exit(0)
+            opened = webbrowser.open(updater_bridge.RELEASES_PAGE)
+            if opened:
+                self._log_msg(f"Opened releases page: {updater_bridge.RELEASES_PAGE}")
+            else:
+                self._log_msg(
+                    "Could not open a browser automatically. "
+                    f"Download manually: {updater_bridge.RELEASES_PAGE}"
+                )
+        except Exception as exc:  # noqa: BLE001
+            self._log_msg(
+                f"Could not open releases page ({exc}). "
+                f"Download manually: {updater_bridge.RELEASES_PAGE}"
+            )
 
     # ------------------------------------------------------------------
     # Cleanup

@@ -112,14 +112,10 @@ The app checks the latest GitHub release and offers in-app update install when a
   - Confirm `wow_savedvars_path` points to the right account and addon file.
   - Make sure WoW is closed before syncing.
   - Relaunch WoW after sync.
-- Auto-update not available:
-  - Auto-update only works in packaged `.exe` mode, not when running `python main.py`.
-- App closed during update and did not relaunch:
-  - Reopen `HiddenLodgeDesktop.exe` manually once, then click update again.
-  - If update still fails, download the latest `HiddenLodgeDesktop.exe` from the GitHub release page and replace the local exe.
-- Update error popup (for example Python DLL load failure):
-  - Check `HiddenLodgeDesktop-updater.log` in the same folder as `HiddenLodgeDesktop.exe` for step-by-step updater diagnostics.
-  - If present, also keep `HiddenLodgeDesktop_update.exe` in that folder; it is the staged fallback executable.
+- New version available:
+  - The app shows an in-app update notice with an `Open Releases` button.
+  - Click it to open GitHub Releases and download the latest `HiddenLodgeDesktop.exe` manually:
+    - https://github.com/jmusick/HiddenLodgeDesktop/releases
 
 ## Development Notes
 
