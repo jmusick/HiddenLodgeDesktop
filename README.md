@@ -12,7 +12,8 @@ It also reads `RCLootCouncil.lua` from the same WoW `SavedVariables` folder and 
 - Syncs on startup and every 6 hours while open.
 - Supports manual sync with a single button.
 - Avoids syncing while WoW is running (to prevent SavedVariables conflicts).
-- Can check GitHub releases and self-update when running as the packaged `.exe`.
+- Checks GitHub releases and shows an in-app notice when a newer version is available.
+- Opens the GitHub Releases page so users can download updates manually.
 
 ## Requirements
 
@@ -46,17 +47,32 @@ Example:
 
 ```json
 {
-    "website_url": "https://hiddenlodge.example.com",
-    "api_key": "YOUR_DESKTOP_API_KEY_HERE",
+  "environment": "prod",
+  "website_url_prod": "https://hiddenlodge.example.com",
+  "website_url_local": "http://localhost:4321",
+  "api_key_prod": "YOUR_DESKTOP_API_KEY_HERE",
+  "api_key_local": "YOUR_DESKTOP_API_KEY_HERE",
+  "website_url": "https://hiddenlodge.example.com",
+  "api_key": "YOUR_DESKTOP_API_KEY_HERE",
     "wow_savedvars_path": "C:\\Program Files (x86)\\World of Warcraft\\_retail_\\WTF\\Account\\YOUR_ACCOUNT\\SavedVariables\\HiddenLodge.lua",
-    "poll_interval_seconds": 21600
+  "poll_interval_seconds": 21600,
+  "api_connect_timeout_seconds": 10,
+  "api_read_timeout_seconds": 45,
+  "api_write_timeout_seconds": 30,
+  "api_request_retries": 2,
+  "api_retry_backoff_seconds": 1.5
 }
 ```
 
 Fields:
 
-- `website_url`: Base URL for your HiddenLodge website.
-- `api_key`: Desktop key used for API authentication.
+- `environment`: Active endpoint profile (`prod` or `local`).
+- `website_url_prod`: Base URL for production API calls.
+- `website_url_local`: Base URL for local-development API calls.
+- `api_key_prod`: Desktop API key used in production mode.
+- `api_key_local`: Desktop API key used in local-development mode.
+- `website_url`: Backward-compatible mirror of the active `environment` URL.
+- `api_key`: Backward-compatible mirror of the active `environment` API key.
 - `wow_savedvars_path`: Full path to `HiddenLodge.lua` in your WoW `SavedVariables` directory.
 - `poll_interval_seconds`: Saved for compatibility in config files; the desktop app currently auto-syncs on launch and every 6 hours while open.
 - `api_connect_timeout_seconds`: Timeout (seconds) for opening a connection to the website API.
@@ -91,7 +107,7 @@ GitHub Actions release workflow is in `.github/workflows/release.yml`.
 - CI builds `HiddenLodgeDesktop.exe`
 - CI publishes a GitHub release with the executable attached
 
-The app checks the latest GitHub release and offers in-app update install when a newer version is available.
+The app checks the latest GitHub release and shows an `Open Releases` action when a newer version is available.
 
 ## Typical Sync Flow
 
