@@ -18,8 +18,8 @@ ITEM_NAME_PATTERN = re.compile(r"\|h\[([^\]]+)\]\|h")
 DATE_PATTERN = re.compile(r"^(\d{4})/(\d{2})/(\d{2})$")
 TIME_PATTERN = re.compile(r"^(\d{2}):(\d{2})(?::(\d{2}))?$")
 
-SEASON_ONE_CUTOFF_DATE = "2026/03/17"
-SEASON_ONE_CUTOFF_EPOCH = 1773705600
+LOOT_TRACKING_START_DATE = "2026/03/17"
+LOOT_TRACKING_START_EPOCH = 1773705600
 
 
 def _normalize_realm(realm: str) -> str:
@@ -151,8 +151,8 @@ def _parse_awarded_epoch(date: str, time_value: str) -> int | None:
 def _is_on_or_after_cutoff(date: str, time_value: str) -> bool:
     epoch = _parse_awarded_epoch(date, time_value)
     if epoch is not None:
-        return epoch >= SEASON_ONE_CUTOFF_EPOCH
-    return bool(date and date >= SEASON_ONE_CUTOFF_DATE)
+        return epoch >= LOOT_TRACKING_START_EPOCH
+    return bool(date and date >= LOOT_TRACKING_START_DATE)
 
 
 def _iter_history_entries(loot_db: dict[str, Any]) -> list[dict[str, Any]]:
