@@ -17,7 +17,7 @@ from tkinter import filedialog, scrolledtext, ttk
 from bridge.config import Config
 from bridge import preparedness as prep_bridge
 from bridge import alt_note_sync as note_bridge
-from bridge import raid_signup as raid_signup_bridge
+# from bridge import raid_signup as raid_signup_bridge  # disabled: website no longer serves signups
 from bridge import loot_history as loot_history_bridge
 from bridge import droptimizer_sync as droptimizer_bridge
 from bridge import updater as updater_bridge
@@ -717,19 +717,20 @@ class App(tk.Tk):
 
     def _run_prep_sync(self) -> None:
         try:
-            prep_count, vault_score_count, attendance_score_count = prep_bridge.sync(self._config)
+            # Raid signups and attendance are not currently served by the website.
+            # Disabled below (not removed) so this can be re-enabled later by
+            # restoring the commented lines.
+            prep_count, vault_score_count, _attendance_score_count = prep_bridge.sync(self._config)
             note_count = note_bridge.sync(self._config)
-            signup_count, signup_raid_name, _signup_raid_start_utc = raid_signup_bridge.sync(self._config)
+            # signup_count, signup_raid_name, _signup_raid_start_utc = raid_signup_bridge.sync(self._config)
             droptimizer_entry_count, droptimizer_item_count = droptimizer_bridge.sync(self._config)
             loot_history_count = loot_history_bridge.sync(self._config)
-            signup_target = signup_raid_name or "No raid scheduled today"
+            # signup_target = signup_raid_name or "No raid scheduled today"
             self._log_msg(
                 "Data sync complete\n"
                 f"  Preparedness: {prep_count}\n"
                 f"  Great Vault score: {vault_score_count}\n"
-                f"  Attendance: {attendance_score_count}\n"
                 f"  Alt-note sync: {note_count}\n"
-                f"  Raid signups: {signup_count} ({signup_target})\n"
                 f"  Droptimizer upgrades: {droptimizer_entry_count} entries across {droptimizer_item_count} items\n"
                 f"  Loot history: {loot_history_count}\n"
                 "  Next step: Relaunch WoW to load the updated data."

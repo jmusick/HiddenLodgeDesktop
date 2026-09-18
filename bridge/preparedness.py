@@ -83,5 +83,7 @@ def sync(config: Config) -> tuple[int, int, int]:
 
     update_preparedness(config.wow_savedvars_path, by_full, by_name)
     update_great_vault_score(config.wow_savedvars_path, vault_by_full, vault_by_name)
-    update_attendance_score(config.wow_savedvars_path, attendance_by_full, attendance_by_name)
+    # Attendance is not currently served by the website; disabled (not removed)
+    # so it can be re-enabled later by restoring this call.
+    # update_attendance_score(config.wow_savedvars_path, attendance_by_full, attendance_by_name)
     return len(by_full), len(vault_by_full), len(attendance_by_full)

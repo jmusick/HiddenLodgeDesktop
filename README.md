@@ -2,7 +2,7 @@
 
 Windows desktop companion for the HiddenLodge website and WoW addon data sync.
 
-The app fetches guild preparedness, attendance, Great Vault score, and droptimizer upgrade data from the website API and writes it into your WoW SavedVariables file (`HiddenLodge.lua`) so the addon can load the latest data in-game.
+The app fetches guild preparedness, Great Vault score, and droptimizer upgrade data from the website API and writes it into your WoW SavedVariables file (`HiddenLodge.lua`) so the addon can load the latest data in-game. (Attendance and raid-signup sync are currently disabled since the website isn't handling those at this time.)
 
 It also reads `RCLootCouncil.lua` from the same WoW `SavedVariables` folder and syncs loot history up to the website.
 
@@ -114,7 +114,7 @@ The app checks the latest GitHub release and shows an `Open Releases` action whe
 1. App starts and loads `config.json`.
 2. If WoW is running, sync is deferred.
 3. When sync runs, app requests `GET /api/desktop/preparedness`.
-4. Response is normalized and written to `HiddenLodge.lua` for preparedness tiers, attendance scores, Great Vault scores, and per-item droptimizer upgrades.
+4. Response is normalized and written to `HiddenLodge.lua` for preparedness tiers, Great Vault scores, and per-item droptimizer upgrades. (Attendance scores and raid-signup sync are currently disabled.)
 5. App requests `POST /api/desktop/loot-history` to upload RCLootCouncil loot history records.
 6. Relaunch WoW (or reload appropriately) to pick up new data.
 
